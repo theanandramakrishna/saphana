@@ -1,10 +1,18 @@
 provider "azurerm" {
 }
 
+//
+// Resource Group globals
+//
+
 resource "azurerm_resource_group" "saphana" {
     name = "saphana"
     location = "West US 2"
 }
+
+//
+// Networks
+//
 
 resource "azurerm_virtual_network" "saphana" {
     name = "saphana_vnet"
@@ -19,6 +27,10 @@ resource azurerm_subnet "saphana" {
     virtual_network_name = "${azurerm_virtual_network.saphana.name}"
     address_prefix = "10.0.1.0/24"
 }
+
+//
+// NICs and PIPs
+//
 
 resource azurerm_public_ip "saphana_pip_1" {
     name = "saphana_pip_1"
@@ -47,22 +59,66 @@ resource azurerm_network_interface "saphana_nic_1" {
     }
 }
 
-/*
-resource azurerm_managed_disk "saphana" {
-    name = "saphana_disk_1"
-    location = "${azurerm_resource_group.saphana.location}"
+resource azurerm_network_interface "saphana_nic_2" {
+    name = "saphana_nic_2"
     resource_group_name = "${azurerm_resource_group.saphana.name}"
-    storage_account_type = "Standard_LRS"
-    create_option = "Empty"
-    disk_size_gb = "1023"
+    location = "${azurerm_resource_group.saphana.location}"
+    ip_configuration {
+        name = "saphana_nic_ipconfig"
+        subnet_id = "${azurerm_subnet.saphana.id}"
+        private_ip_address_allocation = "dynamic"
+        public_ip_address_id = "${azurerm_public_ip.saphana_pip_2.id}"
+    }
 }
-*/
 
-resource azurerm_virtual_machine "saphana" {
+//
+// VMs
+//
+
+resource azurerm_virtual_machine "saphana_vm_1" {
     name = "saphana_vm_1"
     location = "${azurerm_resource_group.saphana.location}"
     resource_group_name = "${azurerm_resource_group.saphana.name}"
     network_interface_ids = ["${azurerm_network_interface.saphana_nic_1.id}"]
+    vm_size = "Standard_DS1_v2"
+    delete_os_disk_on_termination = true
+    delete_data_disks_on_termination = true
+
+    storage_image_reference {
+        publisher = "SUSE"
+        offer = "SLES-SAP"
+        sku = "12-SP3"
+        version = "latest"
+    }
+    storage_os_disk {
+        name = "os_disk"
+        caching = "ReadWrite"
+        create_option = "FromImage"
+        managed_disk_type = "Standard_LRS"
+    }
+    storage_data_disk {
+        name = "data_disk_1"
+        managed_disk_type = "Standard_LRS"
+        create_option = "Empty"
+        disk_size_gb = "1023"
+        lun = 0
+    }
+
+    os_profile {
+        computer_name = "saphanavm1"
+        admin_username = "sapadmin"
+        admin_password = "Password1234!"
+    }
+    os_profile_linux_config {
+        disable_password_authentication = false
+    }
+}
+
+resource azurerm_virtual_machine "saphana_vm_2" {
+    name = "saphana_vm_2"
+    location = "${azurerm_resource_group.saphana.location}"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    network_interface_ids = ["${azurerm_network_interface.saphana_nic_2.id}"]
     vm_size = "Standard_DS1_v2"
     delete_os_disk_on_termination = true
     delete_data_disks_on_termination = true
