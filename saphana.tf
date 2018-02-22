@@ -1,6 +1,4 @@
 provider "azurerm" {
-    subscription_id = "18584c53-4df9-4301-b33d-cef40693a14c"
-    tenant_id = "5ccb1a4a-e4d6-4e8c-9957-fce2cfd32e93"
 }
 
 resource "azurerm_resource_group" "saphana" {
@@ -29,6 +27,14 @@ resource azurerm_public_ip "saphana_pip_1" {
     public_ip_address_allocation = "Dynamic"
     idle_timeout_in_minutes = 30    
 }
+resource azurerm_public_ip "saphana_pip_2" {
+    name = "saphana_pip_2"
+    location = "${azurerm_resource_group.saphana.location}"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    public_ip_address_allocation = "Dynamic"
+    idle_timeout_in_minutes = 30    
+}
+
 resource azurerm_network_interface "saphana_nic_1" {
     name = "saphana_nic_1"
     resource_group_name = "${azurerm_resource_group.saphana.name}"
