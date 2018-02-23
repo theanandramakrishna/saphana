@@ -91,13 +91,13 @@ resource azurerm_virtual_machine "saphana_vm_1" {
         version = "latest"
     }
     storage_os_disk {
-        name = "os_disk"
+        name = "os_disk_vm_1"
         caching = "ReadWrite"
         create_option = "FromImage"
         managed_disk_type = "Standard_LRS"
     }
     storage_data_disk {
-        name = "data_disk_1"
+        name = "data_disk_1_vm_1"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
@@ -130,13 +130,13 @@ resource azurerm_virtual_machine "saphana_vm_2" {
         version = "latest"
     }
     storage_os_disk {
-        name = "os_disk"
+        name = "os_disk_vm_2"
         caching = "ReadWrite"
         create_option = "FromImage"
         managed_disk_type = "Standard_LRS"
     }
     storage_data_disk {
-        name = "data_disk_1"
+        name = "data_disk_1_vm_2"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
