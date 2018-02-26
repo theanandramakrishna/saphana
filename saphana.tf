@@ -139,7 +139,7 @@ output "hanavm_password" {
 //
 
 resource azurerm_public_ip "saphana_pip" {
-    name = "saphana_pip"
+    name = "saphana_pip_${count.index}"
     count = 2
     location = "${azurerm_resource_group.saphana.location}"
     resource_group_name = "${azurerm_resource_group.saphana.name}"
@@ -148,7 +148,7 @@ resource azurerm_public_ip "saphana_pip" {
 }
 
 resource azurerm_network_interface "saphana_nic" {
-    name = "saphana_nic"
+    name = "saphana_nic_${count.index}"
     count = 2
     resource_group_name = "${azurerm_resource_group.saphana.name}"
     location = "${azurerm_resource_group.saphana.location}"
@@ -174,7 +174,7 @@ resource azurerm_availability_set "saphana_as" {
 
 
 resource azurerm_virtual_machine "saphana_vm" {
-    name = "saphana_vm"
+    name = "saphana_vm_${count.index}"
     count = 2
     location = "${azurerm_resource_group.saphana.location}"
     resource_group_name = "${azurerm_resource_group.saphana.name}"
