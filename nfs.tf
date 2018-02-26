@@ -125,13 +125,13 @@ resource azurerm_virtual_machine "nfs_vm" {
         version = "latest"
     }
     storage_os_disk {
-        name = "os_disk_vm_1"
+        name = "os_disk_vm_${count.index}"
         caching = "ReadWrite"
         create_option = "FromImage"
         managed_disk_type = "Standard_LRS"
     }
     storage_data_disk {
-        name = "nfs_data_disk"
+        name = "nfs_data_disk_vm_${count.index}"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"

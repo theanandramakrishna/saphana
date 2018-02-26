@@ -192,20 +192,20 @@ resource azurerm_virtual_machine "saphana_vm" {
         version = "latest"
     }
     storage_os_disk {
-        name = "os_disk"
+        name = "os_disk_vm_${count.index}"
         caching = "ReadWrite"
         create_option = "FromImage"
         managed_disk_type = "Standard_LRS"
     }
     storage_data_disk {
-        name = "sap_data_disk"
+        name = "sap_data_disk_vm_${count.index}"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
         lun = 0
     }
     storage_data_disk {
-        name = "sap_log_disk"
+        name = "sap_log_disk_vm_${count.index}"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
