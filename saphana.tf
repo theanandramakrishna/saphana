@@ -10,7 +10,7 @@ provider "azurerm" {
 // 
 
 variable "location" {
-    default = "West US 2"
+    default = "westus2"
 }
 
 variable "want_jumpbox" {
@@ -74,6 +74,7 @@ resource azurerm_virtual_network "saphana" {
     address_space = ["10.0.0.0/16"]
 }
 
+
 resource azurerm_network_security_group "saphana" {
     name = "saphana_nsg"
     location = "${azurerm_resource_group.saphana.location}"
@@ -101,6 +102,7 @@ resource azurerm_network_security_group "saphana" {
         destination_address_prefix = "*"
     }
 } 
+
 
 resource azurerm_subnet "saphana" {
     name = "saphana_subnet"

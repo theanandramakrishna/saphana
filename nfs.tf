@@ -30,6 +30,9 @@ output "nfsvm_password" {
     value = "${random_string.nfsvm_password.result}"
 }
 
+resource tls_private_key "nfsvm_key" {
+    algorithm = "RSA"
+}
 
 //
 // NICs and PIPs, load balancers
@@ -41,7 +44,8 @@ resource azurerm_public_ip "nfs_pip" {
     location = "${azurerm_resource_group.nfs.location}"
     resource_group_name = "${azurerm_resource_group.nfs.name}"
     public_ip_address_allocation = "Dynamic"
-    idle_timeout_in_minutes = 30    
+    idle_timeout_in_minutes = 30
+    domain_name_label = "nfs${count.index}"    
 }
 
 resource azurerm_network_interface "nfs_nic" {
@@ -58,6 +62,7 @@ resource azurerm_network_interface "nfs_nic" {
             ["${azurerm_lb_backend_address_pool.nfs_lb_backend_address_pool.id}"]
     }
 }
+
 
 resource azurerm_lb "nfs_lb" {
     name = "nfs_lb"
@@ -147,12 +152,36 @@ resource azurerm_virtual_machine "nfs_vm" {
         disable_password_authentication = false
     }
 
-    provisioner "remote-exec" {
-        script = "config_nfs.sh"
-        connection {
-            type = "ssh"
-            user = "nfsadmin"
-            password = "${random_string.nfsvm_password.result}"
-        }
+    provisioner "connection" {
+        type = "ssh"
+        user = "nfsadmin"
+        password = "${random_string.nfsvm_password.result}"
+        host = "nfs${count.index}.${var.location}.cloudapp.azure.com"
     }
+
+    // Provision keys such that each vm can ssh to each other
+    provisioner "file" {
+        content = "${nfsvm_key.private_key_pem}"
+        destination = ".ssh/id_rsa"
+    }
+
+    provisioner "file" {
+        content = "${nfsvm_key.public_key_pem}"
+        destination = ".ssh/id_rsa.pub"
+    }
+
+    provisioner "file" {
+        content = "${nfsvm_key.public_key_openssh}"
+        destination = ".ssh/authorized_keys"
+    }
+
+    provisioner "remote-exec" {
+        script = "config_nfs.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)}"
+    }
+
+/*
+    provisioner "local-exec" {
+        command = "echo ${join(",", azurerm_network_interface.nfs_nic.*.private_ip_address)}"         
+    }
+*/
 }
