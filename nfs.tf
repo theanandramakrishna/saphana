@@ -30,10 +30,14 @@ output "nfsvm_password" {
     value = "${random_string.nfsvm_password.result}"
 }
 
+
 resource tls_private_key "nfsvm_key" {
     algorithm = "RSA"
 }
 
+locals {
+    nfs_admin_user_name = "nfsadmin"
+}
 //
 // NICs and PIPs, load balancers
 //
@@ -145,43 +149,49 @@ resource azurerm_virtual_machine "nfs_vm" {
 
     os_profile {
         computer_name = "nfsvm${count.index}"
-        admin_username = "nfsadmin"
-        admin_password = "${random_string.nfsvm_password.result}"
+        admin_username = "${local.nfs_admin_user_name}"
     }
     os_profile_linux_config {
-        disable_password_authentication = false
+        disable_password_authentication = true
+        ssh_keys = [{
+            path = "/home/${local.nfs_admin_user_name}/.ssh/authorized_keys"
+            key_data = "${file("~/.ssh/id_rsa.pub")}"
+        }]
     }
 
-    provisioner "connection" {
+    connection {
         type = "ssh"
-        user = "nfsadmin"
-        password = "${random_string.nfsvm_password.result}"
+        user = "${local.nfs_admin_user_name}"
+        private_key = "${file("~/.ssh/azureid_rsa")}"
         host = "nfs${count.index}.${var.location}.cloudapp.azure.com"
     }
 
     // Provision keys such that each vm can ssh to each other
     provisioner "file" {
-        content = "${nfsvm_key.private_key_pem}"
+        content = "${tls_private_key.nfsvm_key.private_key_pem}"
         destination = ".ssh/id_rsa"
     }
 
     provisioner "file" {
-        content = "${nfsvm_key.public_key_pem}"
+        content = "${tls_private_key.nfsvm_key.public_key_pem}"
         destination = ".ssh/id_rsa.pub"
     }
 
     provisioner "file" {
-        content = "${nfsvm_key.public_key_openssh}"
+        content = "${tls_private_key.nfsvm_key.public_key_openssh}"
         destination = ".ssh/authorized_keys"
     }
 
-    provisioner "remote-exec" {
-        script = "config_nfs.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)}"
+    provisioner "file" {
+        source = "config_nfs.sh"
+        destination = "/tmp/config_nfs.sh"
     }
-
 /*
-    provisioner "local-exec" {
-        command = "echo ${join(",", azurerm_network_interface.nfs_nic.*.private_ip_address)}"         
+    provisioner "remote-exec" {
+        inline = [
+            "chmod +x /tmp/config_nfs.sh",
+            "/tmp/config_nfs.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", azurerm_virtual_machine.nfs_vm.*.computer_name)} ${count.index} ${random_string.nfsvm_password.result} ${azurerm_lb.nfs_lb.private_ip_address}" 
+        ]
     }
 */
 }
