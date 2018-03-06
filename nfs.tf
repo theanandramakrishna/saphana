@@ -155,7 +155,7 @@ resource azurerm_virtual_machine "nfs_vm" {
         disable_password_authentication = true
         ssh_keys = [{
             path = "/home/${local.nfs_admin_user_name}/.ssh/authorized_keys"
-            key_data = "${file("~/.ssh/id_rsa.pub")}"
+            key_data = "${file("~/.ssh/azureid_rsa.pub")}"
         }]
     }
 
@@ -167,19 +167,24 @@ resource azurerm_virtual_machine "nfs_vm" {
     }
 
     // Provision keys such that each vm can ssh to each other
+    provisioner "remote-exec" {
+        inline = [
+            "mkdir -p /tmp/.ssh"
+        ]
+    }
     provisioner "file" {
         content = "${tls_private_key.nfsvm_key.private_key_pem}"
-        destination = ".ssh/id_rsa"
+        destination = "/tmp/.ssh/id_rsa"
     }
 
     provisioner "file" {
         content = "${tls_private_key.nfsvm_key.public_key_pem}"
-        destination = ".ssh/id_rsa.pub"
+        destination = "/tmp/.ssh/id_rsa.pub"
     }
 
     provisioner "file" {
         content = "${tls_private_key.nfsvm_key.public_key_openssh}"
-        destination = ".ssh/authorized_keys"
+        destination = "/tmp/.ssh/authorized_keys"
     }
 
     provisioner "file" {

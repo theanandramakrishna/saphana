@@ -11,6 +11,10 @@ lbip="$7"
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 
+# Copy over ssh info
+sudo cp -R /tmp/.ssh /root/.ssh
+sudo chmod 0600 /root/.ssh/id_rsa
+
 #install fence agents
 echo "Installing fence agents"
 sudo zypper install -l -y sle-ha-release fence-agents
@@ -18,7 +22,7 @@ sudo zypper install -l -y sle-ha-release fence-agents
 if [ "$nodeindex" = "0" ]
 then 
     echo "initialized ha cluster on primary"
-    sudo ha-cluster-init -i eth0 -y
+    sudo ha-cluster-init -i eth0 -u -y
 fi
 
 # change cluster password
@@ -29,7 +33,7 @@ echo "hacluster:$password" | sudo chpasswd
 if [ "$nodeindex" != "0" ]
 then
     echo "Joining secondary to cluster on primary"
-    sudo ha-cluster-join -c "$ip1" -y
+    sudo ha-cluster-join -c "$ip1" -i eth0 -y
 fi
 
 
