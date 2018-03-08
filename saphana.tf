@@ -87,12 +87,34 @@ resource azurerm_network_security_group "saphana" {
         protocol = "*"
         source_port_range = "*"
         destination_port_range = "*"
-        source_address_prefix = "*"
+        source_address_prefix = "71.227.232.59"
+        destination_address_prefix = "*"
+    }
+    security_rule {
+        name = "saphana_nsg_allow_vnet_rule"
+        priority = 101
+        direction = "Inbound"
+        access = "Allow"
+        protocol = "*"
+        source_port_range = "*"
+        destination_port_range = "*"
+        source_address_prefix = "VirtualNetwork"
+        destination_address_prefix = "*"
+    }
+    security_rule {
+        name = "saphana_nsg_allow_lb_rule"
+        priority = 102
+        direction = "Inbound"
+        access = "Allow"
+        protocol = "*"
+        source_port_range = "*"
+        destination_port_range = "*"
+        source_address_prefix = "AzureLoadBalancer"
         destination_address_prefix = "*"
     }
     security_rule {
         name = "saphana_nsg_deny_rule"
-        priority = 1000
+        priority = 3000
         direction = "Inbound"
         access = "Deny"
         protocol = "*"

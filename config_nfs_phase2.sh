@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Built with information from 
+# in https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse
+
 echo "Getting arguments"
 ip1="$1"
 ip2="$2"
@@ -8,94 +11,13 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
+# aadtenantid="$8"
+# aadappid="$9"
+# aadsecret="$10"
+#subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
+#resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
-
-# Copy over ssh info
-sudo cp -R /tmp/.ssh /root/.ssh
-sudo chmod 0600 /root/.ssh/id_rsa
-
-#install fence agents
-echo "Installing fence agents"
-sudo zypper install -l -y sle-ha-release fence-agents
-
-if [ "$nodeindex" = "0" ]
-then 
-    echo "initialized ha cluster on primary"
-    sudo ha-cluster-init -i eth0 -u -y
-fi
-
-# change cluster password
-echo "Changing hacluster password"
-echo "hacluster:$password" | sudo chpasswd
-
-#add node(s) to cluster
-if [ "$nodeindex" != "0" ]
-then
-    echo "Joining secondary to cluster on primary"
-    sudo ha-cluster-join -c "$ip1" -i eth0 -y
-fi
-
-
-#configure corosync
-echo "Configuring corosync config"
-cat << EOF | sudo tee -a /etc/corosync/corosync.conf
-nodelist {
-    node {
-        ring0_addr: ${ip1}
-    }
-    node {
-        ring0_addr: ${ip2}
-    }
-}
-EOF
-
-#restart corosync
-echo "Restarted corosync service"
-sudo service corosync restart
-
-#install drbd
-echo "Installing drbd"
-sudo zypper install -l -y drbd drbd-kmp-default drbd-utils
-
-#create drbd partition
-echo "Creating drbd partition"
-sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/sdc'
-
-#create lvm configs
-echo "Creating lvm configs"
-sudo pvcreate /dev/sdc1   
-sudo vgcreate vg_NFS /dev/sdc1
-sudo lvcreate -l 100%FREE -n NWS vg_NFS
-
-#create nfs drbd device
-echo "Creating nfs drbd device"
-cat << EOF | sudo tee /etc/drbd.d/NWS_nfs.res
-resource NWS_nfs {
-   protocol     C;
-   disk {
-      on-io-error       pass_on;
-   }
-   on ${host1} {
-      address   ${ip1}:7790;
-      device    /dev/drbd0;
-      disk      /dev/vg_NFS/NWS;
-      meta-disk internal;
-   }
-   on ${host2} {
-      address   ${ip2}:7790;
-      device    /dev/drbd0;
-      disk      /dev/vg_NFS/NWS;
-      meta-disk internal;
-   }
-}
-EOF
-
-echo "Creating drbdadm nfs"
-sudo drbdadm create-md NWS_nfs
-
-echo "Bring up this node for drbd"
-sudo drbdadm up NWS_nfs
 
 
 # Get the sync status going on the primary
@@ -103,15 +25,21 @@ if [ "$nodeindex" = "0" ]
 then
     echo "Create new drbd uuid"
     sudo drbdadm new-current-uuid --clear-bitmap NWS_nfs
+    
     echo "Make into drbd primary"
-    sudo drbdadm primary --force NWS_nfs
+    sudo drbdadm -- --overwrite-data-of-peer --force primary NWS_nfs
 
-    sudo cat /proc/drbd
+#    echo "wait until drbd devices are ready to synchronize"
+#    Shouldn't be necessary, could take a little while.
+#    sudo drbdsetup wait-sync-resource NWS_nfs
+
+    echo "Sleep 1m to let device settle"
+    sleep 1m
 
     # Make file systems
     echo "Do mkfs on drbd device"
     sudo mkfs.xfs /dev/drbd0
-
+    
     # Now configure cluster framework
     echo "Configure cluster framework"
     sudo crm configure << EOF
@@ -162,10 +90,10 @@ colocation col-NWS_nfs_on_drbd inf: \
 commit
 exit    
 EOF
-
+    
     echo "Sleep for 1m to let device come up"
     sleep 1m
-    
+
     echo "Make directories"
     sudo mkdir /srv/nfs/NWS/sidsys
     sudo mkdir /srv/nfs/NWS/sapmntsid
@@ -202,9 +130,21 @@ commit
 exit
 EOF
 
-# What about create a virtual IP resource and health-probe for the internal load balancer
-# step in https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse
+#Need to config stonith device
+#    echo "Configure stonith device"
+#    sudo crm configure << EOF
+#primitive rsc_st_azure_1 stonith:fence_azure_arm \
+#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
+
+#primitive rsc_st_azure_2 stonith:fence_azure_arm \
+#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
+
+#colocation col_st_azure -2000: rsc_st_azure_1:Started rsc_st_azure_2:Started
+
+#commit
+#exit
+#EOF
 
 fi
 
-#Need to config stonith device
+
