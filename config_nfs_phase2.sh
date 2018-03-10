@@ -14,8 +14,8 @@ lbip="$7"
 # aadtenantid="$8"
 # aadappid="$9"
 # aadsecret="$10"
-#subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
-#resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
+#subscription=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"`
+#resourcegroup=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"`
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 
@@ -23,15 +23,14 @@ echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, pass
 # Get the sync status going on the primary
 if [ "$nodeindex" = "0" ]
 then
-    echo "Create new drbd uuid"
+    echo "Create new drbd uuid to skip initial sync since device is empty"
     sudo drbdadm new-current-uuid --clear-bitmap NWS_nfs
     
     echo "Make into drbd primary"
     sudo drbdadm -- --overwrite-data-of-peer --force primary NWS_nfs
 
-#    echo "wait until drbd devices are ready to synchronize"
-#    Shouldn't be necessary, could take a little while.
-#    sudo drbdsetup wait-sync-resource NWS_nfs
+    echo "wait until drbd devices are ready to synchronize"
+    sudo drbdsetup wait-sync-resource NWS_nfs
 
     echo "Sleep 1m to let device settle"
     sleep 1m
@@ -98,7 +97,11 @@ EOF
     sudo mkdir /srv/nfs/NWS/sidsys
     sudo mkdir /srv/nfs/NWS/sapmntsid
     sudo mkdir /srv/nfs/NWS/trans
-
+    sudo mkdir /srv/nfs/NWS/ASCS
+    sudo mkdir /srv/nfs/NWS/ASCSERS
+    sudo mkdir /srv/nfs/NWS/SCS
+    sudo mkdir /srv/nfs/NWS/SCSERS
+    
     echo "configure cluster heartbeat"
     sudo crm configure << EOF
 primitive exportfs_NWS \

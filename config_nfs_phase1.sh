@@ -27,6 +27,17 @@ sudo chmod 0600 /root/.ssh/id_rsa
 echo "Installing fence agents"
 sudo zypper install -l -y sle-ha-release fence-agents
 
+echo "put /srv/nfs dir into exports"
+sudo sh -c 'echo /srv/nfs/ *\(rw,no_root_squash,fsid=0\)>/etc/exports'
+
+echo "Make nfs dirs"
+sudo mkdir /srv/nfs/
+
+echo "Enable nfsserver"
+sudo systemctl enable nfsserver
+echo "Setup nfsserver for restarts"
+sudo service nfsserver restart
+
 if [ "$nodeindex" = "0" ]
 then 
     # Use unicast, not multicast due to Azure support
@@ -72,12 +83,12 @@ sudo zypper install -l -y drbd drbd-kmp-default drbd-utils
 
 #create drbd partition
 echo "Creating drbd partition"
-sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/sdc'
+sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun0'
 
 #create lvm configs
 echo "Creating lvm configs"
-sudo pvcreate /dev/sdc1   
-sudo vgcreate vg_NFS /dev/sdc1
+sudo pvcreate /dev/disk/azure/scsi1/lun0-part1   
+sudo vgcreate vg_NFS /dev/disk/azure/scsi1/lun0-part1
 sudo lvcreate -l 100%FREE -n NWS vg_NFS
 
 #create nfs drbd device
