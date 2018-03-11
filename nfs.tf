@@ -60,14 +60,25 @@ locals {
 // NICs and PIPs, load balancers
 //
 
-resource azurerm_public_ip "nfs_pip" {
-    count = 2
-    name = "nfs_pip_${count.index}"
+resource azurerm_public_ip "nfs_bastion_pip" {
+    name = "nfs_bastion_pip"
     location = "${azurerm_resource_group.nfs.location}"
     resource_group_name = "${azurerm_resource_group.nfs.name}"
     public_ip_address_allocation = "Dynamic"
     idle_timeout_in_minutes = 30
-    domain_name_label = "nfs${count.index}"    
+    domain_name_label = "nfsbastion"    
+}
+
+resource azurerm_network_interface "nfs_bastion_nic" {
+    name = "nfs_bastion_nic"
+    resource_group_name = "${azurerm_resource_group.nfs.name}"
+    location = "${azurerm_resource_group.nfs.location}"
+    ip_configuration {
+        name = "nfs_bastion_nic_ipconfig"
+        subnet_id = "${local.subnet_id}"
+        private_ip_address_allocation = "dynamic"
+        public_ip_address_id = "${azurerm_public_ip.nfs_bastion_pip.id}"
+    }    
 }
 
 resource azurerm_network_interface "nfs_nic" {
@@ -79,7 +90,6 @@ resource azurerm_network_interface "nfs_nic" {
         name = "nfs_nic_ipconfig"
         subnet_id = "${local.subnet_id}"
         private_ip_address_allocation = "dynamic"
-        public_ip_address_id = "${element(azurerm_public_ip.nfs_pip.*.id, count.index)}"
         load_balancer_backend_address_pools_ids = 
             ["${azurerm_lb_backend_address_pool.nfs_lb_backend_address_pool.id}"]
     }
@@ -133,6 +143,40 @@ resource azurerm_availability_set "nfs_as" {
     platform_fault_domain_count = 2
 }
 
+resource azurerm_virtual_machine "bastion_vm" {
+    name = "nfs_bastion"
+    location = "${azurerm_resource_group.nfs.location}"
+    resource_group_name = "${azurerm_resource_group.nfs.name}"
+    delete_os_disk_on_termination = true
+    vm_size = "Standard_A1_v2"
+    network_interface_ids = ["${azurerm_network_interface.nfs_bastion_nic.id}"]
+
+    storage_image_reference {
+        publisher = "SUSE"
+        offer = "SLES-SAP"
+        sku = "12-SP3"
+        version = "latest"
+    }
+
+    storage_os_disk {
+        name = "os_disk_bastion"
+        caching = "ReadWrite"
+        create_option = "FromImage"
+        managed_disk_type = "Standard_LRS"
+    }
+    os_profile {
+        computer_name = "bastion"
+        admin_username = "${local.nfs_admin_user_name}"
+    }
+    os_profile_linux_config {
+        disable_password_authentication = true
+        ssh_keys = [{
+            path = "/home/${local.nfs_admin_user_name}/.ssh/authorized_keys"
+            key_data = "${file("~/.ssh/azureid_rsa.pub")}"
+        }]
+    }
+}
+
 resource azurerm_virtual_machine "nfs_vm" {
     count = 2
     name = "nfs_vm_${count.index}"
@@ -180,13 +224,15 @@ resource azurerm_virtual_machine "nfs_vm" {
 
 resource null_resource "configure-nfs" { 
     count = 2
-    depends_on = ["azurerm_virtual_machine.nfs_vm"]
+    depends_on = ["azurerm_virtual_machine.nfs_vm", "azurerm_virtual_machine.bastion_vm"]
 
     connection {
         type = "ssh"
         user = "${local.nfs_admin_user_name}"
         private_key = "${file("~/.ssh/azureid_rsa")}"
-        host = "nfs${count.index}.${var.location}.cloudapp.azure.com"
+        host = "${element(local.computer_name, count.index)}"
+
+        bastion_host = "nfsbastion.${var.location}.cloudapp.azure.com"
     }
 
     // Provision keys such that each vm can ssh to each other
@@ -228,7 +274,9 @@ resource null_resource "configure-nfs-cluster-0" {
         type = "ssh"
         user = "${local.nfs_admin_user_name}"
         private_key = "${file("~/.ssh/azureid_rsa")}"
-        host = "nfs0.${var.location}.cloudapp.azure.com"
+        host = "${element(local.computer_name, 0)}"
+
+        bastion_host = "nfsbastion.${var.location}.cloudapp.azure.com"
     }
 
     provisioner "remote-exec" {
@@ -247,7 +295,9 @@ resource null_resource "configure-nfs-cluster-1" {
         type = "ssh"
         user = "${local.nfs_admin_user_name}"
         private_key = "${file("~/.ssh/azureid_rsa")}"
-        host = "nfs1.${var.location}.cloudapp.azure.com"
+        host = "${element(local.computer_name, 1)}"
+
+        bastion_host = "nfsbastion.${var.location}.cloudapp.azure.com"
     }
 
     provisioner "remote-exec" {
@@ -266,7 +316,9 @@ resource null_resource "configure-nfs-cluster-phase2" {
         type = "ssh"
         user = "${local.nfs_admin_user_name}"
         private_key = "${file("~/.ssh/azureid_rsa")}"
-        host = "nfs0.${var.location}.cloudapp.azure.com"
+        host = "${element(local.computer_name, 0)}"
+
+        bastion_host = "nfsbastion.${var.location}.cloudapp.azure.com"
     }
 
     provisioner "remote-exec" {
