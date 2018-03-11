@@ -13,10 +13,6 @@ variable "location" {
     default = "westus2"
 }
 
-variable "want_jumpbox" {
-    default = false
-}
-
 variable "vmsize" {
     default = "E16_v3"
 }
@@ -162,15 +158,7 @@ output "hanavm_password" {
 // NICs and PIPs
 //
 
-resource azurerm_public_ip "saphana_pip" {
-    name = "saphana_pip_${count.index}"
-    count = 2
-    location = "${azurerm_resource_group.saphana.location}"
-    resource_group_name = "${azurerm_resource_group.saphana.name}"
-    public_ip_address_allocation = "Dynamic"
-    idle_timeout_in_minutes = 30    
-}
-
+/*
 resource azurerm_network_interface "saphana_nic" {
     name = "saphana_nic_${count.index}"
     count = 2
@@ -180,7 +168,6 @@ resource azurerm_network_interface "saphana_nic" {
         name = "saphana_nic_ipconfig"
         subnet_id = "${azurerm_subnet.saphana.id}"
         private_ip_address_allocation = "dynamic"
-        public_ip_address_id = "${element(azurerm_public_ip.saphana_pip.*.id, count.index)}"
     }
 }
 
@@ -245,4 +232,4 @@ resource azurerm_virtual_machine "saphana_vm" {
         disable_password_authentication = false
     }
 }
-
+*/
