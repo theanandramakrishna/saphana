@@ -11,21 +11,46 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
-# aadtenantid="$8"
-# aadappid="$9"
-# aadsecret="$10"
+storageendpoint="$8"
+storageacctname="$9"
+storageacctkey="$10"
+sharename="$11"
+
 #subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
 #resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
+echo "storageacctname=$storageacctname storageendpoint=$storageendpoint storageacctkey=REDACTED sharename=$sharename"
 
 # Copy over ssh info
 sudo cp -R /tmp/.ssh /root/.ssh
 sudo chmod 0600 /root/.ssh/id_rsa
 
+#Make directories, etc. for fencing device
+sudo mkdir /mnt/$sharename
+sudo bash -c 'echo "//$storageendpoint/$sharename /mnt/$sharename cifs nofail,vers=2.1,username=$storageacctname,password=$storageacctkey,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab'
+sudo mount -a
+
+fencedevicepath="/mnt/$sharename/fencedevice"
+
+if [ "$nodeindex" = "0" ]
+then
+    sudo dd if=/dev/zero of=$fencedevicepath bs=1M count=1024
+fi
+sudo losetup /dev/loop0 $fencedevicepath  
+
+if [ "$nodeindex" = "0" ]
+then
+    sudo sbd -d /dev/loop0 -1 10 -4 20 create
+fi
+    # Need to do sbd configuration in /etc/sysconfig/sbd
+
+sudo echo softdog > /etc/modules-load.d/softdog.conf
+sudo modprobe -v softdog
+
 #install fence agents
 echo "Installing fence agents"
-sudo zypper install -l -y sle-ha-release fence-agents
+sudo zypper install -l -y sle-ha-release fence-agents samba*
 
 echo "put /srv/nfs dir into exports"
 sudo sh -c 'echo /srv/nfs/ *\(rw,no_root_squash,fsid=0\)>/etc/exports'
