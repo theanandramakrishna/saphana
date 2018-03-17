@@ -380,7 +380,7 @@ resource tls_private_key "sapvm_key" {
 }
 
 
-resource null_resource "configure-nfs" { 
+resource null_resource "configure-hana" { 
     count = 2
     depends_on = ["azurerm_virtual_machine.saphana_vm", "azurerm_virtual_machine.bastion_vm"]
 
@@ -390,7 +390,7 @@ resource null_resource "configure-nfs" {
         private_key = "${file("~/.ssh/azureid_rsa")}"
         host = "${element(local.sap_computer_name, count.index)}"
 
-        bastion_host = "bastion.${var.location}.cloudapp.azure.com"
+        bastion_host = "${local.bastion_fqdn}"
     }
 
     // Provision keys such that each vm can ssh to each other
@@ -417,6 +417,45 @@ resource null_resource "configure-nfs" {
         source = "config_hana.sh"
         destination = "/tmp/config_hana.sh"
     }
+}
 
+resource null_resource "configure-hana-cluster-0" { 
+    depends_on = ["null_resource.configure-hana"]
+
+    connection {
+        type = "ssh"
+        user = "${local.sap_admin_user_name}"
+        private_key = "${file("~/.ssh/azureid_rsa")}"
+        host = "${element(local.sap_computer_name, count.index)}"
+
+        bastion_host = "${local.bastion_fqdn}"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "chmod +x /tmp/config_hana.sh",
+            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 0 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address}"
+        ]
+    }
+}
+
+resource null_resource "configure-hana-cluster-1" { 
+    depends_on = ["null_resource.configure-hana-cluster-0"]
+
+    connection {
+        type = "ssh"
+        user = "${local.sap_admin_user_name}"
+        private_key = "${file("~/.ssh/azureid_rsa")}"
+        host = "${element(local.sap_computer_name, count.index)}"
+
+        bastion_host = "${local.bastion_fqdn}"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "chmod +x /tmp/config_hana.sh",
+            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 1 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address}"
+        ]
+    }
 }
 
