@@ -11,13 +11,16 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
-# aadtenantid="$8"
-# aadappid="$9"
-# aadsecret="$10"
+hanasid="$8"
+hanainstancenumber="$9"
+# aadtenantid="$9"
+# aadappid="$10"
+# aadsecret="$11"
 #subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
 #resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
+echo "hanasid=$hanasid hanainstancenumber=$hanainstancenumber"
 
 # Copy over ssh info
 sudo cp -R /tmp/.ssh /root/.ssh
@@ -111,23 +114,24 @@ sudo zypper install SAPHanaSR
 if [ "$nodeindex" = "0" ]
 then
 	echo "Create hana user and database to setup replication"
-	PATH="$PATH:/usr/sap/HDB/HDB03/exe"
-	hdbsql -u system -i 03 'CREATE USER hdbhasync PASSWORD "$password"' 
-	hdbsql -u system -i 03 'GRANT DATA ADMIN TO hdbhasync' 
-	hdbsql -u system -i 03 'ALTER USER hdbhasync DISABLE PASSWORD LIFETIME'
+	PATH="$PATH:/usr/sap/$hanasid/HDB${hanainstancenumber}/exe"
+	hdbsql -u system -i $hanainstancenumber 'CREATE USER hdbhasync PASSWORD "$password"' 
+	hdbsql -u system -i $hanainstancenumber 'GRANT DATA ADMIN TO hdbhasync' 
+	hdbsql -u system -i $hanainstancenumber 'ALTER USER hdbhasync DISABLE PASSWORD LIFETIME'
+# BUGBUG Should the user number have hanasid in it?
 fi
 
 # Create keystore entry
 echo "Creating keystore entry"
-PATH="$PATH:/usr/sap/HDB/HDB03/exe"
-hdbuserstore SET hdbhaloc localhost:30315 hdbhasync "$password"
+PATH="$PATH:/usr/sap/$hanasid/HDB$hanainstancenumber/exe"
+hdbuserstore SET hdbhaloc localhost:3${hanainstancenumber}15 hdbhasync "$password"
 
 # backup the db
 if [ "$nodeindex" = "0" ]
 then
 	echo "Backing up the database"
-	PATH="$PATH:/usr/sap/HDB/HDB03/exe"
-	hdbsql -u system -i 03 "BACKUP DATA USING FILE ('initialbackup')"
+	PATH="$PATH:/usr/sap/$hanasid/HDB${hanainstancenumber}/exe"
+	hdbsql -u system -i $hanainstancenumber "BACKUP DATA USING FILE ('initialbackup')"
 
 	echo "Creating primary site"
 	su - hdbadm
@@ -138,8 +142,8 @@ if [ "$nodeindex" = "1" ]
 then
 	echo "Creating secondary site"
 	su - hdbadm
-	sapcontrol -nr 03 -function StopWait 600 10
-	hdbnsutil -sr_register --remoteHost=$host1 --remoteInstance=03 --replicationMode=sync --name=SITE2	
+	sapcontrol -nr $hanainstancenumber -function StopWait 600 10
+	hdbnsutil -sr_register --remoteHost=$host1 --remoteInstance=$hanainstancenumber --replicationMode=sync --name=SITE2	
 fi
 
 
@@ -163,13 +167,13 @@ EOF
 	# Create SAP HANA resource in cluster
 	echo "Configure cluster for HANA resource"
 	sudo crm configure << EOF
-primitive rsc_SAPHanaTopology_HDB_HDB03 ocf:suse:SAPHanaTopology \
-    operations $id="rsc_sap2_HDB_HDB03-operations" \
+primitive rsc_SAPHanaTopology_${hanasid}_HDB${hanainstancenumber} ocf:suse:SAPHanaTopology \
+    operations $id="rsc_sap2_${hanasid}_HDB${hanainstancenumber}-operations" \
     op monitor interval="10" timeout="600" \
     op start interval="0" timeout="600" \
     op stop interval="0" timeout="300" \
-    params SID="HDB" InstanceNumber="03"
-clone cln_SAPHanaTopology_HDB_HDB03 rsc_SAPHanaTopology_HDB_HDB03 \
+    params SID="${hanasid}" InstanceNumber="${hanainstancenumber}"
+clone cln_SAPHanaTopology_${hanasid}_HDB${hanainstancenumber} rsc_SAPHanaTopology_${hanasid}_HDB${hanainstancenumber} \
     meta is-managed="true" clone-node-max="1" target-role="Started" interleave="true"
 commit
 exit    
@@ -177,31 +181,31 @@ EOF
 
 	echo "Configure more cluster for HANA"
 	sudo crm configure << EOF
-primitive rsc_SAPHana_HDB_HDB03 ocf:suse:SAPHana \
-    operations $id="rsc_sap_HDB_HDB03-operations" \
+primitive rsc_SAPHana_${hanasid}_HDB${hanainstancenumber} ocf:suse:SAPHana \
+    operations $id="rsc_sap_${hanasid}_HDB${hanainstancenumber}-operations" \
     op start interval="0" timeout="3600" \
     op stop interval="0" timeout="3600" \
     op promote interval="0" timeout="3600" \
     op monitor interval="60" role="Master" timeout="700" \
     op monitor interval="61" role="Slave" timeout="700" \
-    params SID="HDB" InstanceNumber="03" PREFER_SITE_TAKEOVER="true" \
+    params SID="${hanasid}" InstanceNumber="${hanainstancenumber}" PREFER_SITE_TAKEOVER="true" \
     DUPLICATE_PRIMARY_TIMEOUT="7200" AUTOMATED_REGISTER="false"
-ms msl_SAPHana_HDB_HDB03 rsc_SAPHana_HDB_HDB03 \
+ms msl_SAPHana_${hanasid}_HDB{$hanainstancenumber} rsc_SAPHana_${hanasid}_HDB{$hanainstancenumber} \
     meta is-managed="true" notify="true" clone-max="2" clone-node-max="1" \
     target-role="Started" interleave="true"
-primitive rsc_ip_HDB_HDB03 ocf:heartbeat:IPaddr2 \ 
+primitive rsc_ip_${hanasid}_HDB${hanainstancenumber} ocf:heartbeat:IPaddr2 \ 
     meta target-role="Started" is-managed="true" \ 
-    operations $id="rsc_ip_HDB_HDB03-operations" \ 
+    operations $id="rsc_ip_${hanasid}_HDB${hanainstancenumber}-operations" \ 
     op monitor interval="10s" timeout="20s" \ 
     params ip="${lbip}" 
-primitive rsc_nc_HDB_HDB03 anything \ 
-    params binfile="/usr/bin/nc" cmdline_options="-l -k 62503" \ 
+primitive rsc_nc_${hanasid}_HDB${hanainstancenumber} anything \ 
+    params binfile="/usr/bin/nc" cmdline_options="-l -k 625${hanainstancenumber}" \ 
     op monitor timeout=20s interval=10 depth=0 
-group g_ip_HDB_HDB03 rsc_ip_HDB_HDB03 rsc_nc_HDB_HDB03
-colocation col_saphana_ip_HDB_HDB03 2000: g_ip_HDB_HDB03:Started \ 
-    msl_SAPHana_HDB_HDB03:Master  
-order ord_SAPHana_HDB_HDB03 2000: cln_SAPHanaTopology_HDB_HDB03 \ 
-    msl_SAPHana_HDB_HDB03	
+group g_ip_${hanasid}_HDB${hanainstancenumber} rsc_ip_${hanasid}_HDB${hanainstancenumber} rsc_nc_${hanasid}_HDB${hanainstancenumber}
+colocation col_saphana_ip_${hanasid}_HDB${hanainstancenumber} 2000: g_ip_${hanasid}_HDB${hanainstancenumber}:Started \ 
+    msl_SAPHana_${hanasid}_HDB${hanainstancenumber}:Master  
+order ord_SAPHana_${hanasid}_HDB${hanainstancenumber} 2000: cln_SAPHanaTopology_${hanasid}_HDB${hanainstancenumber} \ 
+    msl_SAPHana_${hanasid}_HDB${hanainstancenumber}	
 commit
 exit    
 EOF

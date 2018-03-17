@@ -1,5 +1,6 @@
 provider "azurerm" {
 }
+
 //
 // Parameters
 // Jumpbox (y/n)
@@ -40,7 +41,7 @@ variable "hana_sid" {
 
 variable "hana_instance_number" {
     type = "string"
-    default = "00"
+    default = "003"
 }
 
 variable "byos" {
@@ -434,7 +435,7 @@ resource null_resource "configure-hana-cluster-0" {
     provisioner "remote-exec" {
         inline = [
             "chmod +x /tmp/config_hana.sh",
-            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 0 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address}"
+            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 0 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${var.hana_sid} ${var.hana_instance_number}"
         ]
     }
 }
@@ -454,7 +455,7 @@ resource null_resource "configure-hana-cluster-1" {
     provisioner "remote-exec" {
         inline = [
             "chmod +x /tmp/config_hana.sh",
-            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 1 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address}"
+            "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 1 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${var.hana_sid} ${var.hana_instance_number}"
         ]
     }
 }
