@@ -163,6 +163,8 @@ EOF
 
 # Need to create stonith devices
 # BUGBUG Not done
+sudo crm configure
+
 
 	# Create SAP HANA resource in cluster
 	echo "Configure cluster for HANA resource"
