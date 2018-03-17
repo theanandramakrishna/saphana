@@ -35,7 +35,7 @@ locals {
 
 variable "hana_sid" {
     description = "SAP HANA system id"
-    default = "H10"
+    default = "HDB"
 }
 
 variable "hana_instance_number" {
@@ -158,7 +158,32 @@ output "hanavm_password" {
 // NICs and PIPs
 //
 
-/*
+resource azurerm_public_ip "bastion_pip" {
+    name = "bastion_pip"
+    location = "${azurerm_resource_group.saphana.location}"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    public_ip_address_allocation = "Dynamic"
+    idle_timeout_in_minutes = 30
+    domain_name_label = "bastion"    
+}
+
+locals {
+	bastion_fqdn = "${azurerm_public_ip.bastion_pip.fqdn}"
+}
+
+
+resource azurerm_network_interface "bastion_nic" {
+    name = "bastion_nic"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    location = "${azurerm_resource_group.saphana.location}"
+    ip_configuration {
+        name = "bastion_nic_ipconfig"
+        subnet_id = "${azurerm_subnet.saphana.id}"
+        private_ip_address_allocation = "dynamic"
+        public_ip_address_id = "${azurerm_public_ip.bastion_pip.id}"
+    }    
+}
+
 resource azurerm_network_interface "saphana_nic" {
     name = "saphana_nic_${count.index}"
     count = 2
@@ -168,13 +193,111 @@ resource azurerm_network_interface "saphana_nic" {
         name = "saphana_nic_ipconfig"
         subnet_id = "${azurerm_subnet.saphana.id}"
         private_ip_address_allocation = "dynamic"
+        load_balancer_backend_address_pools_ids = 
+            ["${azurerm_lb_backend_address_pool.hanadb_lb_backend_address_pool.id}"]
     }
+}
+
+//
+// Load balancers
+//
+
+resource azurerm_lb "hanadb_lb" {
+    name = "hanadb_lb"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    location = "${azurerm_resource_group.saphana.location}"
+
+    frontend_ip_configuration {
+        name = "hanadb_lb_ip_config"
+        subnet_id = "${azurerm_subnet.saphana.id}"
+        private_ip_address_allocation = "Dynamic"
+    }    
+}
+
+resource azurerm_lb_backend_address_pool "hanadb_lb_backend_address_pool" {
+    name = "hanadb_lb_backend_address_pool"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    loadbalancer_id = "${azurerm_lb.hanadb_lb.id}"    
+}
+
+resource azurerm_lb_rule "hanadb_lb_rule_1" {
+    name = "hanadb_lb_rule_1"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    loadbalancer_id = "${azurerm_lb.hanadb_lb.id}"    
+    protocol = "Tcp"
+    frontend_port = "30315" // hana port
+    backend_port = "30315"
+    frontend_ip_configuration_name = "hanadb_lb_ip_config"
+	idle_timeout = "30"
+	// Floating IP?
+}
+
+resource azurerm_lb_rule "hanadb_lb_rule_2" {
+    name = "hanadb_lb_rule_2"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    loadbalancer_id = "${azurerm_lb.hanadb_lb.id}"    
+    protocol = "Tcp"
+    frontend_port = "30317" // hana port
+    backend_port = "30317"
+    frontend_ip_configuration_name = "hanadb_lb_ip_config"
+	idle_timeout = "30"
+}
+
+resource azurerm_lb_probe "hanadb_lb_probe" {
+    name = "hanadb_lb_probe"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    loadbalancer_id = "${azurerm_lb.hanadb_lb.id}"    
+    port = "62503"    
 }
 
 
 //
 // VMs
 //
+
+locals {
+    sap_admin_user_name = "sapadmin"
+    sap_computer_name = [
+        "hanavm0",
+        "hanavm1"
+    ]
+}
+
+resource azurerm_virtual_machine "bastion_vm" {
+    name = "bastion"
+    location = "${azurerm_resource_group.saphana.location}"
+    resource_group_name = "${azurerm_resource_group.saphana.name}"
+    delete_os_disk_on_termination = true
+    vm_size = "Standard_A1_v2"
+    network_interface_ids = ["${azurerm_network_interface.bastion_nic.id}"]
+
+    storage_image_reference {
+        publisher = "SUSE"
+        offer = "SLES-SAP"
+        sku = "12-SP3"
+        version = "latest"
+    }
+
+    storage_os_disk {
+        name = "os_disk_bastion"
+        caching = "ReadWrite"
+        create_option = "FromImage"
+        managed_disk_type = "Standard_LRS"
+    }
+    os_profile {
+        computer_name = "bastion"
+        admin_username = "${local.sap_admin_user_name}"
+    }
+    os_profile_linux_config {
+        disable_password_authentication = true
+        ssh_keys = [{
+            path = "/home/${local.sap_admin_user_name}/.ssh/authorized_keys"
+            key_data = "${file("~/.ssh/azureid_rsa.pub")}"
+        }]
+    }
+}
+
+
 resource azurerm_availability_set "saphana_as" {
     name = "saphana_as"
     location = "${azurerm_resource_group.saphana.location}"
@@ -209,27 +332,91 @@ resource azurerm_virtual_machine "saphana_vm" {
         managed_disk_type = "Standard_LRS"
     }
     storage_data_disk {
-        name = "sap_data_disk_vm_${count.index}"
+        name = "sap_data_disk_vm_${count.index}_0"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
         lun = 0
     }
     storage_data_disk {
-        name = "sap_log_disk_vm_${count.index}"
+        name = "sap_data_disk_vm_${count.index}_1"
         managed_disk_type = "Standard_LRS"
         create_option = "Empty"
         disk_size_gb = "1023"
         lun = 1
     }
+    storage_data_disk {
+        name = "sap_data_disk_vm_${count.index}_2"
+        managed_disk_type = "Standard_LRS"
+        create_option = "Empty"
+        disk_size_gb = "1023"
+        lun = 2
+    }
+    storage_data_disk {
+        name = "sap_data_disk_vm_${count.index}_3"
+        managed_disk_type = "Standard_LRS"
+        create_option = "Empty"
+        disk_size_gb = "1023"
+        lun = 3
+    }
 
     os_profile {
-        computer_name = "saphanavm${count.index}"
-        admin_username = "sapadmin"
-        admin_password = "${random_string.hanavm_password.result}"
+        computer_name = "${element(local.sap_computer_name, count.index)}"
+        admin_username = "${local.sap_admin_user_name}"
     }
     os_profile_linux_config {
-        disable_password_authentication = false
+        disable_password_authentication = true
+        ssh_keys = [{
+            path = "/home/${local.sap_admin_user_name}/.ssh/authorized_keys"
+            key_data = "${file("~/.ssh/azureid_rsa.pub")}"
+        }]
     }
+	
 }
-*/
+
+
+resource tls_private_key "sapvm_key" {
+    algorithm = "RSA"
+}
+
+
+resource null_resource "configure-nfs" { 
+    count = 2
+    depends_on = ["azurerm_virtual_machine.saphana_vm", "azurerm_virtual_machine.bastion_vm"]
+
+    connection {
+        type = "ssh"
+        user = "${local.sap_admin_user_name}"
+        private_key = "${file("~/.ssh/azureid_rsa")}"
+        host = "${element(local.sap_computer_name, count.index)}"
+
+        bastion_host = "bastion.${var.location}.cloudapp.azure.com"
+    }
+
+    // Provision keys such that each vm can ssh to each other
+    provisioner "remote-exec" {
+        inline = [
+            "mkdir -p /tmp/.ssh"
+        ]
+    }
+    provisioner "file" {
+        content = "${tls_private_key.sapvm_key.private_key_pem}"
+        destination = "/tmp/.ssh/id_rsa"
+    }
+
+    provisioner "file" {
+        content = "${tls_private_key.sapvm_key.public_key_pem}"
+        destination = "/tmp/.ssh/id_rsa.pub"
+    }
+
+    provisioner "file" {
+        content = "${tls_private_key.sapvm_key.public_key_openssh}"
+        destination = "/tmp/.ssh/authorized_keys"
+    }
+    provisioner "file" {
+        source = "config_hana.sh"
+        destination = "/tmp/config_hana.sh"
+    }
+
+}
+
