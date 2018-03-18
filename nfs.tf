@@ -180,6 +180,7 @@ resource null_resource "configure-nfs" {
         host = "${element(local.computer_name, count.index)}"
 
         bastion_host = "${local.bastion_fqdn}"
+		bastion_user = "${local.bastion_user_name}"
     }
 
     // Provision keys such that each vm can ssh to each other
@@ -224,6 +225,7 @@ resource null_resource "configure-nfs-cluster-0" {
         host = "${element(local.computer_name, 0)}"
 
         bastion_host = "${local.bastion_fqdn}"
+		bastion_user = "${local.bastion_user_name}"
     }
 
     provisioner "remote-exec" {
@@ -245,6 +247,7 @@ resource null_resource "configure-nfs-cluster-1" {
         host = "${element(local.computer_name, 1)}"
 
         bastion_host = "${local.bastion_fqdn}"
+		bastion_user = "${local.bastion_user_name}"
     }
 
     provisioner "remote-exec" {
@@ -266,6 +269,7 @@ resource null_resource "configure-nfs-cluster-phase2" {
         host = "${element(local.computer_name, 0)}"
 
         bastion_host = "${local.bastion_fqdn}"
+		bastion_user = "${local.bastion_user_name}"
 }
 
     provisioner "remote-exec" {

@@ -165,11 +165,12 @@ resource azurerm_public_ip "bastion_pip" {
     resource_group_name = "${azurerm_resource_group.saphana.name}"
     public_ip_address_allocation = "Dynamic"
     idle_timeout_in_minutes = 30
-    domain_name_label = "bastion"    
+    domain_name_label = "sapbastion"    
 }
 
 locals {
 	bastion_fqdn = "${azurerm_public_ip.bastion_pip.fqdn}"
+	bastion_user_name = "bastionuser"
 }
 
 
@@ -229,8 +230,8 @@ resource azurerm_lb_rule "hanadb_lb_rule_1" {
     frontend_port = "30315" // hana port
     backend_port = "30315"
     frontend_ip_configuration_name = "hanadb_lb_ip_config"
-	idle_timeout = "30"
-	// Floating IP?
+	idle_timeout_in_minutes = "30"
+	enable_floating_ip = "true"
 }
 
 resource azurerm_lb_rule "hanadb_lb_rule_2" {
@@ -241,7 +242,8 @@ resource azurerm_lb_rule "hanadb_lb_rule_2" {
     frontend_port = "30317" // hana port
     backend_port = "30317"
     frontend_ip_configuration_name = "hanadb_lb_ip_config"
-	idle_timeout = "30"
+	idle_timeout_in_minutes = "30"
+	enable_floating_ip = "true"
 }
 
 resource azurerm_lb_probe "hanadb_lb_probe" {
@@ -287,12 +289,12 @@ resource azurerm_virtual_machine "bastion_vm" {
     }
     os_profile {
         computer_name = "bastion"
-        admin_username = "${local.sap_admin_user_name}"
+        admin_username = "${local.bastion_user_name}"
     }
     os_profile_linux_config {
         disable_password_authentication = true
         ssh_keys = [{
-            path = "/home/${local.sap_admin_user_name}/.ssh/authorized_keys"
+            path = "/home/${local.bastion_user_name}/.ssh/authorized_keys"
             key_data = "${file("~/.ssh/azureid_rsa.pub")}"
         }]
     }
@@ -392,6 +394,7 @@ resource null_resource "configure-hana" {
         host = "${element(local.sap_computer_name, count.index)}"
 
         bastion_host = "${local.bastion_fqdn}"
+		bastion_user = "${local.bastion_user_name}"
     }
 
     // Provision keys such that each vm can ssh to each other
@@ -430,7 +433,8 @@ resource null_resource "configure-hana-cluster-0" {
         host = "${element(local.sap_computer_name, count.index)}"
 
         bastion_host = "${local.bastion_fqdn}"
-    }
+		bastion_user = "${local.bastion_user_name}"
+	}
 
     provisioner "remote-exec" {
         inline = [
@@ -450,7 +454,8 @@ resource null_resource "configure-hana-cluster-1" {
         host = "${element(local.sap_computer_name, count.index)}"
 
         bastion_host = "${local.bastion_fqdn}"
-    }
+   		bastion_user = "${local.bastion_user_name}"
+}
 
     provisioner "remote-exec" {
         inline = [
