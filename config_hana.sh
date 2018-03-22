@@ -22,6 +22,7 @@ hanainstancenumber="$9"
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 echo "hanasid=$hanasid hanainstancenumber=$hanainstancenumber"
 
+
 # Copy over ssh info
 sudo cp -R /tmp/.ssh /root/.ssh
 sudo chmod 0600 /root/.ssh/id_rsa
@@ -33,11 +34,15 @@ sudo zypper install -l -y sle-ha-release fence-agents
 # setup disk layout
 # this assumes that 4 disks are attached at lun 0 through 4
 
-echo "Creating physical volumes"
+echo "Creating partitions and physical volumes"
+sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun0'
+sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun1'
+sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun2'
+sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun3'
 sudo pvcreate /dev/disk/azure/scsi1/lun0-part1   
-sudo pvcreate /dev/disk/azure/scsi1/lun1-part1   
-sudo pvcreate /dev/disk/azure/scsi1/lun2-part1   
-sudo pvcreate /dev/disk/azure/scsi1/lun3-part1   
+sudo pvcreate /dev/disk/azure/scsi1/lun1-part1
+sudo pvcreate /dev/disk/azure/scsi1/lun2-part1
+sudo pvcreate /dev/disk/azure/scsi1/lun3-part1
 
 echo "Creating volume groups"
 sudo vgcreate vg_hana_data /dev/disk/azure/scsi1/lun0-part1 /dev/disk/azure/scsi1/lun1-part1
@@ -51,6 +56,11 @@ sudo lvcreate -l 100%FREE -n hana_shared vg_hana_shared
 sudo mkfs.xfs /dev/vg_hana_data/hana_data
 sudo mkfs.xfs /dev/vg_hana_log/hana_log
 sudo mkfs.xfs /dev/vg_hana_shared/hana_shared
+
+echo "Creating mount points"
+sudo mkdir /hana/data
+sudo mkdir /hana/log
+sudo mkdir /hana/shared
 
 # mount volumes
 echo "Mounting volumes into fstab"
@@ -163,14 +173,14 @@ EOF
 
 # Need to create stonith devices
 # BUGBUG Not done
-sudo crm configure
+#sudo crm configure
 
 
 	# Create SAP HANA resource in cluster
 	echo "Configure cluster for HANA resource"
 	sudo crm configure << EOF
 primitive rsc_SAPHanaTopology_${hanasid}_HDB${hanainstancenumber} ocf:suse:SAPHanaTopology \
-    operations $id="rsc_sap2_${hanasid}_HDB${hanainstancenumber}-operations" \
+    operations \$id="rsc_sap2_${hanasid}_HDB${hanainstancenumber}-operations" \
     op monitor interval="10" timeout="600" \
     op start interval="0" timeout="600" \
     op stop interval="0" timeout="300" \
@@ -184,7 +194,7 @@ EOF
 	echo "Configure more cluster for HANA"
 	sudo crm configure << EOF
 primitive rsc_SAPHana_${hanasid}_HDB${hanainstancenumber} ocf:suse:SAPHana \
-    operations $id="rsc_sap_${hanasid}_HDB${hanainstancenumber}-operations" \
+    operations \$id="rsc_sap_${hanasid}_HDB${hanainstancenumber}-operations" \
     op start interval="0" timeout="3600" \
     op stop interval="0" timeout="3600" \
     op promote interval="0" timeout="3600" \
@@ -197,7 +207,7 @@ ms msl_SAPHana_${hanasid}_HDB{$hanainstancenumber} rsc_SAPHana_${hanasid}_HDB{$h
     target-role="Started" interleave="true"
 primitive rsc_ip_${hanasid}_HDB${hanainstancenumber} ocf:heartbeat:IPaddr2 \ 
     meta target-role="Started" is-managed="true" \ 
-    operations $id="rsc_ip_${hanasid}_HDB${hanainstancenumber}-operations" \ 
+    operations \$id="rsc_ip_${hanasid}_HDB${hanainstancenumber}-operations" \ 
     op monitor interval="10s" timeout="20s" \ 
     params ip="${lbip}" 
 primitive rsc_nc_${hanasid}_HDB${hanainstancenumber} anything \ 
