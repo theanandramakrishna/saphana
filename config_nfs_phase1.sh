@@ -28,6 +28,7 @@ sudo chmod 0600 /root/.ssh/id_rsa
 
 #Make directories, etc. for fencing device
 sudo mkdir /mnt/$sharename
+#bugbug Use autofs
 sudo bash -c 'echo "//$storageendpoint/$sharename /mnt/$sharename cifs nofail,vers=2.1,username=$storageacctname,password=$storageacctkey,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab'
 sudo mount -a
 
@@ -51,6 +52,10 @@ sudo modprobe -v softdog
 #install fence agents
 echo "Installing fence agents"
 sudo zypper install -l -y sle-ha-release fence-agents samba*
+
+# Turn on ntp at boot
+echo "Turn on ntp at boot"
+sudo systemctl enable ntpd.service
 
 echo "put /srv/nfs dir into exports"
 sudo sh -c 'echo /srv/nfs/ *\(rw,no_root_squash,fsid=0\)>/etc/exports'
