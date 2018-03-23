@@ -11,9 +11,7 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
-# aadtenantid="$8"
-# aadappid="$9"
-# aadsecret="$10"
+
 #subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
 #resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
@@ -26,6 +24,10 @@ sudo chmod 0600 /root/.ssh/id_rsa
 #install fence agents
 echo "Installing fence agents"
 sudo zypper install -l -y sle-ha-release fence-agents
+
+# Turn on ntp at boot
+echo "Turn on ntp at boot"
+sudo systemctl enable ntpd.service
 
 echo "put /srv/nfs dir into exports"
 sudo sh -c 'echo /srv/nfs/ *\(rw,no_root_squash,fsid=0\)>/etc/exports'

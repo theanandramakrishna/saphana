@@ -11,9 +11,7 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
-# aadtenantid="$8"
-# aadappid="$9"
-# aadsecret="$10"
+
 #subscription=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"`
 #resourcegroup=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"`
 
@@ -148,6 +146,7 @@ EOF
 #exit
 #EOF
 
+  echo "Done!"
 fi
 
 
