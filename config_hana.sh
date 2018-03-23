@@ -13,9 +13,7 @@ password="$6"
 lbip="$7"
 hanasid="$8"
 hanainstancenumber="$9"
-# aadtenantid="$9"
-# aadappid="$10"
-# aadsecret="$11"
+
 #subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
 #resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
@@ -33,7 +31,6 @@ sudo zypper install -l -y sle-ha-release fence-agents
 
 # setup disk layout
 # this assumes that 4 disks are attached at lun 0 through 4
-
 echo "Creating partitions and physical volumes"
 sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun0'
 sudo sh -c 'echo -e "n\n\n\n\n\nw\n" | fdisk /dev/disk/azure/scsi1/lun1'
@@ -58,9 +55,9 @@ sudo mkfs.xfs /dev/vg_hana_log/hana_log
 sudo mkfs.xfs /dev/vg_hana_shared/hana_shared
 
 echo "Creating mount points"
-sudo mkdir /hana/data
-sudo mkdir /hana/log
-sudo mkdir /hana/shared
+sudo mkdir -p /hana/data
+sudo mkdir -p /hana/log
+sudo mkdir -p /hana/shared
 
 # mount volumes
 echo "Mounting volumes into fstab"
@@ -71,12 +68,21 @@ cat << EOF | sudo tee -a /etc/fstab
 EOF
 sudo mount -a
 
+# Turn on softdog
+echo "Enabling softdog"
+echo softdog | sudo tee /etc/modules-load.d/watchdog.conf
+sudo systemctl restart systemd-modules-load
+
+# Turn on ntp at boot
+echo "Turn on ntp at boot"
+sudo systemctl enable ntpd.service
+
 # install cluster on node
 if [ "$nodeindex" = "0" ]
 then 
     # Use unicast, not multicast due to Azure support
     echo "initialized ha cluster on primary"
-    sudo ha-cluster-init -i eth0 -u -y
+    sudo ha-cluster-init -i eth0 -u -y -s /dev/disk/azure/resource # BUGBUG Must configure real stonith device here
 fi
 
 #add node(s) to cluster
@@ -120,6 +126,8 @@ sudo zypper install SAPHanaSR
 # Upgrade SAP host agents
 #sudo /usr/sap/hostctrl/exe/saphostexec -upgrade -archive <path to SAP Host Agent SAR>
 
+if [ "0" = "1" ]
+then
 # Create HANA replication
 if [ "$nodeindex" = "0" ]
 then
@@ -156,6 +164,8 @@ then
 	hdbnsutil -sr_register --remoteHost=$host1 --remoteInstance=$hanainstancenumber --replicationMode=sync --name=SITE2	
 fi
 
+fi
+
 
 # configure cluster framework
 # Need to set the defaults
@@ -171,10 +181,12 @@ commit
 exit
 EOF
 
-# Need to create stonith devices
-# BUGBUG Not done
-#sudo crm configure
-
+# Configure STONITH 
+    echo "Configuring STONITH"
+    sudo crm configure << EOF
+primitive fencing-sbd stonith:external/sbd \
+    op start start-delay="15"
+EOF
 
 	# Create SAP HANA resource in cluster
 	echo "Configure cluster for HANA resource"
@@ -202,7 +214,7 @@ primitive rsc_SAPHana_${hanasid}_HDB${hanainstancenumber} ocf:suse:SAPHana \
     op monitor interval="61" role="Slave" timeout="700" \
     params SID="${hanasid}" InstanceNumber="${hanainstancenumber}" PREFER_SITE_TAKEOVER="true" \
     DUPLICATE_PRIMARY_TIMEOUT="7200" AUTOMATED_REGISTER="false"
-ms msl_SAPHana_${hanasid}_HDB{$hanainstancenumber} rsc_SAPHana_${hanasid}_HDB{$hanainstancenumber} \
+ms msl_SAPHana_${hanasid}_HDB${hanainstancenumber} rsc_SAPHana_${hanasid}_HDB${hanainstancenumber} \
     meta is-managed="true" notify="true" clone-max="2" clone-node-max="1" \
     target-role="Started" interleave="true"
 primitive rsc_ip_${hanasid}_HDB${hanainstancenumber} ocf:heartbeat:IPaddr2 \ 
