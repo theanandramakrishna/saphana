@@ -267,6 +267,14 @@ locals {
   ]
 }
 
+resource azurerm_storage_account "sap_diagnostics" {
+  name                     = "sapdiag"
+  resource_group_name      = "${azurerm_resource_group.saphana.name}"
+  location                 = "${azurerm_resource_group.saphana.location}"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
 resource azurerm_virtual_machine "bastion_vm" {
   name                          = "bastion"
   location                      = "${azurerm_resource_group.saphana.location}"
@@ -301,6 +309,11 @@ resource azurerm_virtual_machine "bastion_vm" {
       path     = "/home/${local.bastion_user_name}/.ssh/authorized_keys"
       key_data = "${file("~/.ssh/azureid_rsa.pub")}"
     }]
+  }
+
+  boot_diagnostics {
+    enabled     = true
+    storage_uri = "${azurerm_storage_account.sap_diagnostics.primary_blob_endpoint}"
   }
 }
 
@@ -382,6 +395,11 @@ resource azurerm_virtual_machine "saphana_vm" {
       path     = "/home/${local.sap_admin_user_name}/.ssh/authorized_keys"
       key_data = "${file("~/.ssh/azureid_rsa.pub")}"
     }]
+  }
+
+  boot_diagnostics {
+    enabled     = true
+    storage_uri = "${azurerm_storage_account.sap_diagnostics.primary_blob_endpoint}"
   }
 }
 

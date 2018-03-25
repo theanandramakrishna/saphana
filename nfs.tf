@@ -8,12 +8,6 @@ variable "byos" {
 }
 */
 
-variable "fence_agent_aad_tenant_id" {}
-
-variable "fence_agent_aad_app_id" {}
-
-variable "fence_agent_aad_secret" {}
-
 //
 // Resource group globals
 //
@@ -108,19 +102,37 @@ resource azurerm_lb_probe "nfs_lb_probe" {
 // Storage
 //
 
-resource azurerm_storage_account "nfs_storage" {
-  name                     = "nfs_storage"
+resource random_string "storage_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
+resource azurerm_storage_account "nfs_storage_sbd" {
+  name                     = "nfssbd${random_string.storage_suffix.result}"
   resource_group_name      = "${azurerm_resource_group.nfs.name}"
   location                 = "${azurerm_resource_group.nfs.location}"
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
 
+locals {
+  nfs_sbd_share_name = "nfssbd"
+}
+
 resource azurerm_storage_share "nfs_share_sbd" {
-  name                 = "nfssbd"
+  name                 = "${local.nfs_sbd_share_name}"
   resource_group_name  = "${azurerm_resource_group.nfs.name}"
-  storage_account_name = "${azurerm_storage_account.nfs_storage.name}"
+  storage_account_name = "${azurerm_storage_account.nfs_storage_sbd.name}"
   quota                = 10
+}
+
+resource azurerm_storage_account "nfs_diagnostics" {
+  name                     = "nfsdiag${random_string.storage_suffix.result}"
+  resource_group_name      = "${azurerm_resource_group.nfs.name}"
+  location                 = "${azurerm_resource_group.nfs.location}"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
 }
 
 //
@@ -181,6 +193,11 @@ resource azurerm_virtual_machine "nfs_vm" {
       path     = "/home/${local.nfs_admin_user_name}/.ssh/authorized_keys"
       key_data = "${file("~/.ssh/azureid_rsa.pub")}"
     }]
+  }
+
+  boot_diagnostics {
+    enabled     = true
+    storage_uri = "${azurerm_storage_account.nfs_diagnostics.primary_blob_endpoint}"
   }
 }
 
@@ -247,7 +264,7 @@ resource null_resource "configure-nfs-cluster-0" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/config_nfs_phase1.sh",
-      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage.primary_file_endpoint} ${azurerm_storage_account.nfs_storage.name} \"${azurerm_storage_account.nfs_storage.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${local.nfs_sbd_share_name}",
     ]
   }
 }
@@ -268,7 +285,7 @@ resource null_resource "configure-nfs-cluster-1" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/config_nfs_phase1.sh",
-      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 1 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage.primary_file_endpoint} ${azurerm_storage_account.nfs_storage.name} \"${azurerm_storage_account.nfs_storage.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 1 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${local.nfs_sbd_share_name}",
     ]
   }
 }

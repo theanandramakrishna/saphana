@@ -38,11 +38,19 @@ then
     sudo mkfs.xfs /dev/drbd0
     
     # Now configure cluster framework
-    echo "Configure cluster framework"
+    echo "Configure cluster defaults"
     sudo crm configure << EOF
 rsc_defaults resource-stickiness="1"
+property no-quorum-policy="ignore" stonith-enabled="true" stonith-action="reboot" stonith-timeout="150s"
 commit
 exit
+EOF
+
+    # Configure STONITH 
+    echo "Configuring STONITH"
+    sudo crm configure << EOF
+primitive fencing-sbd stonith:external/sbd \
+    op start start-delay="15"
 EOF
 
     echo "Configure cluster drbd resource"
@@ -130,21 +138,6 @@ modgroup g-NWS_nfs add vip_NWS_nfs
 commit
 exit
 EOF
-
-#Need to config stonith device
-#    echo "Configure stonith device"
-#    sudo crm configure << EOF
-#primitive rsc_st_azure_1 stonith:fence_azure_arm \
-#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
-
-#primitive rsc_st_azure_2 stonith:fence_azure_arm \
-#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
-
-#colocation col_st_azure -2000: rsc_st_azure_1:Started rsc_st_azure_2:Started
-
-#commit
-#exit
-#EOF
 
   echo "Done!"
 fi

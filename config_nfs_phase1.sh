@@ -11,25 +11,30 @@ host2="$4"
 nodeindex="$5"
 password="$6"
 lbip="$7"
-storageendpoint="$8"
-storageacctname="$9"
-storageacctkey="$10"
-sharename="$11"
+storageacctname="$8"
+storageacctkey="$9"
+sharename="${10}"
 
 #subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
 #resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
-echo "storageacctname=$storageacctname storageendpoint=$storageendpoint storageacctkey=REDACTED sharename=$sharename"
+echo "storageacctname=$storageacctname storageacctkey=REDACTED sharename=$sharename"
 
 # Copy over ssh info
 sudo cp -R /tmp/.ssh /root/.ssh
 sudo chmod 0600 /root/.ssh/id_rsa
 
 #Make directories, etc. for fencing device
+echo "Mounting share for fence device"
 sudo mkdir /mnt/$sharename
-#bugbug Use autofs
-sudo bash -c 'echo "//$storageendpoint/$sharename /mnt/$sharename cifs nofail,vers=2.1,username=$storageacctname,password=$storageacctkey,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab'
+
+cat << EOF | sudo tee -a /etc/fstab
+//${storageacctname}.file.core.windows.net/${sharename} /mnt/${sharename} cifs nofail,hard,vers=2.1,username=${storageacctname},password=${storageacctkey},dir_mode=0777,file_mode=0777,serverino
+EOF
+
+#BUGBUG Configure kernel reboot on panic
+
 sudo mount -a
 
 fencedevicepath="/mnt/$sharename/fencedevice"
@@ -38,30 +43,50 @@ if [ "$nodeindex" = "0" ]
 then
     sudo dd if=/dev/zero of=$fencedevicepath bs=1M count=1024
 fi
-sudo losetup /dev/loop0 $fencedevicepath  
 
-if [ "$nodeindex" = "0" ]
-then
-    sudo sbd -d /dev/loop0 -1 10 -4 20 create
-fi
-    # Need to do sbd configuration in /etc/sysconfig/sbd
+echo "Creating fence device"
+cat << EOF | sudo tee /usr/lib/systemd/system/loopfence.service
+[Unit]
+Description=Setup loop device for fencing
+DefaultDependencies=false
+ConditionFileIsExecutable=/usr/lib/systemd/scripts/createfenceloop.sh
+Before=local-fs.target
+After=systemd-udev-settle.service mnt-${sharename}.mount
+Requires=systemd-udev-settle.service
 
-sudo echo softdog > /etc/modules-load.d/softdog.conf
-sudo modprobe -v softdog
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/systemd/scripts/createfenceloop.sh
+TimeoutSec=60
+RemainAfterExit=yes
+EOF
 
-#install fence agents
-echo "Installing fence agents"
-sudo zypper install -l -y sle-ha-release fence-agents samba*
+cat << EOF | sudo tee /usr/lib/systemd/scripts/createfenceloop.sh
+#!/bin/bash
+sudo losetup /dev/loop0 ${fencedevicepath}
+EOF
+sudo chmod +x /usr/lib/systemd/scripts/createfenceloop.sh
+sudo systemctl enable loopfence.service
+sudo systemctl start loopfence.service
+
+# Turn on softdog
+echo "Enabling softdog"
+echo softdog | sudo tee /etc/modules-load.d/watchdog.conf
+sudo systemctl restart systemd-modules-load
 
 # Turn on ntp at boot
 echo "Turn on ntp at boot"
 sudo systemctl enable ntpd.service
 
+#install fence agents
+echo "Installing fence agents"
+sudo zypper install -l -y sle-ha-release fence-agents
+
 echo "put /srv/nfs dir into exports"
 sudo sh -c 'echo /srv/nfs/ *\(rw,no_root_squash,fsid=0\)>/etc/exports'
 
 echo "Make nfs dirs"
-sudo mkdir /srv/nfs/
+sudo mkdir -p /srv/nfs/
 
 echo "Enable nfsserver"
 sudo systemctl enable nfsserver
@@ -72,7 +97,7 @@ if [ "$nodeindex" = "0" ]
 then 
     # Use unicast, not multicast due to Azure support
     echo "initialized ha cluster on primary"
-    sudo ha-cluster-init -i eth0 -u -y
+    sudo ha-cluster-init -i eth0 -u -y -s /dev/loop0
 fi
 
 # change cluster password
