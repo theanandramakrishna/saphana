@@ -38,13 +38,13 @@ function setupFenceDevice () {
     echo "Mounting share for fence device"
     sudo mkdir /mnt/$sharename
 
-    cat << EOF | sudo tee /root/.smbcreds
-username=${storageacctname} 
+    cat << EOF | sudo tee /etc/smb.creds
+username=${storageacctname}
 password=${storageacctkey}
 EOF
     sudo chmod 0600 /root/.smbcreds
     cat << EOF | sudo tee -a /etc/fstab
-//${storageacctname}.file.core.windows.net/${sharename} /mnt/${sharename} cifs nofail,hard,vers=2.1,credentials=/root/.smbcreds,dir_mode=0777,file_mode=0777,serverino
+//${storageacctname}.file.core.windows.net/${sharename} /mnt/${sharename} cifs nofail,hard,vers=2.1,credentials=/etc/smb.creds,dir_mode=0777,cache=none,file_mode=0777,serverino
 EOF
 
     sudo mount -a
