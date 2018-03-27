@@ -3,17 +3,7 @@
 # Built with information from 
 # in https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse
 
-echo "Getting arguments"
-ip1="$1"
-ip2="$2"
-host1="$3"
-host2="$4"
-nodeindex="$5"
-password="$6"
-lbip="$7"
-
-#subscription=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"`
-#resourcegroup=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"`
+source `dirname $0`/common.sh
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 
@@ -37,21 +27,7 @@ then
     echo "Do mkfs on drbd device"
     sudo mkfs.xfs /dev/drbd0
     
-    # Now configure cluster framework
-    echo "Configure cluster defaults"
-    sudo crm configure << EOF
-rsc_defaults resource-stickiness="1"
-property no-quorum-policy="ignore" stonith-enabled="true" stonith-action="reboot" stonith-timeout="150s"
-commit
-exit
-EOF
-
-    # Configure STONITH 
-    echo "Configuring STONITH"
-    sudo crm configure << EOF
-primitive fencing-sbd stonith:external/sbd \
-    op start start-delay="15"
-EOF
+    configureClusterDefaults
 
     echo "Configure cluster drbd resource"
     sudo crm configure << EOF

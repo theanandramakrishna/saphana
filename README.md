@@ -5,7 +5,6 @@ Project initializes via terraform
 ------------------
 TODO
 * Configure cifs file as loopback device and use with sbd
-* mount cifs with autofs, not fstab
 * investigate hardware watchdogs
 * ASCS
 * App Servers

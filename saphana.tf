@@ -228,8 +228,9 @@ resource azurerm_lb_rule "hanadb_lb_rule_1" {
   resource_group_name            = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id                = "${azurerm_lb.hanadb_lb.id}"
   protocol                       = "Tcp"
-  frontend_port                  = "30315"                                  // hana port
+  frontend_port                  = "30315"                                                                // hana port
   backend_port                   = "30315"
+  backend_address_pool_id        = "${azurerm_lb_backend_address_pool.hanadb_lb_backend_address_pool.id}"
   frontend_ip_configuration_name = "hanadb_lb_ip_config"
   idle_timeout_in_minutes        = "30"
   enable_floating_ip             = "true"
@@ -240,11 +241,13 @@ resource azurerm_lb_rule "hanadb_lb_rule_2" {
   resource_group_name            = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id                = "${azurerm_lb.hanadb_lb.id}"
   protocol                       = "Tcp"
-  frontend_port                  = "30317"                                  // hana port
+  frontend_port                  = "30317"                                                                // hana port
   backend_port                   = "30317"
+  backend_address_pool_id        = "${azurerm_lb_backend_address_pool.hanadb_lb_backend_address_pool.id}"
   frontend_ip_configuration_name = "hanadb_lb_ip_config"
   idle_timeout_in_minutes        = "30"
   enable_floating_ip             = "true"
+  probe_id                       = "${azurerm_lb_probe.hanadb_lb_probe.id}"
 }
 
 resource azurerm_lb_probe "hanadb_lb_probe" {
@@ -252,6 +255,34 @@ resource azurerm_lb_probe "hanadb_lb_probe" {
   resource_group_name = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id     = "${azurerm_lb.hanadb_lb.id}"
   port                = "62503"
+  protocol            = "Tcp"
+}
+
+//
+// Storage
+//
+
+resource azurerm_storage_account "sap_storage_sbd" {
+  name                     = "sapsbd${random_string.storage_suffix.result}"
+  resource_group_name      = "${azurerm_resource_group.saphana.name}"
+  location                 = "${azurerm_resource_group.saphana.location}"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
+resource azurerm_storage_share "sap_share_sbd" {
+  name                 = "sapsbd"
+  resource_group_name  = "${azurerm_resource_group.saphana.name}"
+  storage_account_name = "${azurerm_storage_account.sap_storage_sbd.name}"
+  quota                = 10
+}
+
+resource azurerm_storage_account "sap_diagnostics" {
+  name                     = "sapdiag"
+  resource_group_name      = "${azurerm_resource_group.saphana.name}"
+  location                 = "${azurerm_resource_group.saphana.location}"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
 }
 
 //
@@ -265,14 +296,6 @@ locals {
     "hanavm0",
     "hanavm1",
   ]
-}
-
-resource azurerm_storage_account "sap_diagnostics" {
-  name                     = "sapdiag"
-  resource_group_name      = "${azurerm_resource_group.saphana.name}"
-  location                 = "${azurerm_resource_group.saphana.location}"
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
 }
 
 resource azurerm_virtual_machine "bastion_vm" {
@@ -447,6 +470,11 @@ resource null_resource "configure-hana" {
     source      = "config_hana.sh"
     destination = "/tmp/config_hana.sh"
   }
+
+  provisioner "file" {
+    source      = "common.sh"
+    destination = "/tmp/common.sh"
+  }
 }
 
 resource null_resource "configure-hana-cluster-0" {
@@ -465,7 +493,7 @@ resource null_resource "configure-hana-cluster-0" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/config_hana.sh",
-      "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 0 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${var.hana_sid} ${var.hana_instance_number}",
+      "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 0 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${azurerm_storage_account.sap_storage_sbd.name} \"${azurerm_storage_account.sap_storage_sbd.primary_access_key}\" ${azurerm_storage_share.sap_share_sbd.name} ${var.hana_sid} ${var.hana_instance_number}",
     ]
   }
 }
@@ -486,7 +514,7 @@ resource null_resource "configure-hana-cluster-1" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/config_hana.sh",
-      "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 1 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${var.hana_sid} ${var.hana_instance_number}",
+      "/tmp/config_hana.sh ${join(" ", azurerm_network_interface.saphana_nic.*.private_ip_address)} ${join(" ", local.sap_computer_name)} 1 \"${random_string.hanavm_password.result}\" ${azurerm_lb.hanadb_lb.private_ip_address} ${azurerm_storage_account.sap_storage_sbd.name} \"${azurerm_storage_account.sap_storage_sbd.primary_access_key}\" ${azurerm_storage_share.sap_share_sbd.name} ${var.hana_sid} ${var.hana_instance_number}",
     ]
   }
 }
