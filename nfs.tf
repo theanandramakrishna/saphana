@@ -91,6 +91,7 @@ resource azurerm_lb_rule "nfs_lb_rule" {
   backend_address_pool_id        = "${azurerm_lb_backend_address_pool.nfs_lb_backend_address_pool.id}"
   frontend_ip_configuration_name = "nfs_lb_ip_config"
   probe_id                       = "${azurerm_lb_probe.nfs_lb_probe.id}"
+  enable_floating_ip             = "true"
 }
 
 resource azurerm_lb_probe "nfs_lb_probe" {
