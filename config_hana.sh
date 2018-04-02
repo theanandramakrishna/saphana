@@ -3,31 +3,16 @@
 # Built with information from 
 # in https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/sap-hana-high-availability
 
-echo "Getting arguments"
-ip1="$1"
-ip2="$2"
-host1="$3"
-host2="$4"
-nodeindex="$5"
-password="$6"
-lbip="$7"
-hanasid="$8"
-hanainstancenumber="$9"
+source `dirname $0`/common.sh
 
-#subscription="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"}"
-#resourcegroup="${curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"}"
+hanasid="${11}"
+hanainstancenumber="${12}"
+
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 echo "hanasid=$hanasid hanainstancenumber=$hanainstancenumber"
 
-
-# Copy over ssh info
-sudo cp -R /tmp/.ssh /root/.ssh
-sudo chmod 0600 /root/.ssh/id_rsa
-
-#install fence agents
-echo "Installing fence agents"
-sudo zypper install -l -y sle-ha-release fence-agents
+initialize
 
 # setup disk layout
 # this assumes that 4 disks are attached at lun 0 through 4
@@ -46,7 +31,7 @@ sudo vgcreate vg_hana_data /dev/disk/azure/scsi1/lun0-part1 /dev/disk/azure/scsi
 sudo vgcreate vg_hana_log /dev/disk/azure/scsi1/lun2-part1
 sudo vgcreate vg_hana_shared /dev/disk/azure/scsi1/lun3-part1
 
-echo "Creae logical volumes"
+echo "Create logical volumes"
 sudo lvcreate -l 100%FREE -n hana_data vg_hana_data
 sudo lvcreate -l 100%FREE -n hana_log vg_hana_log
 sudo lvcreate -l 100%FREE -n hana_shared vg_hana_shared
@@ -68,53 +53,9 @@ cat << EOF | sudo tee -a /etc/fstab
 EOF
 sudo mount -a
 
-# Turn on softdog
-echo "Enabling softdog"
-echo softdog | sudo tee /etc/modules-load.d/watchdog.conf
-sudo systemctl restart systemd-modules-load
+initializeCluster
 
-# Turn on ntp at boot
-echo "Turn on ntp at boot"
-sudo systemctl enable ntpd.service
-
-# install cluster on node
-if [ "$nodeindex" = "0" ]
-then 
-    # Use unicast, not multicast due to Azure support
-    echo "initialized ha cluster on primary"
-    sudo ha-cluster-init -i eth0 -u -y -s /dev/disk/azure/resource # BUGBUG Must configure real stonith device here
-fi
-
-#add node(s) to cluster
-if [ "$nodeindex" != "0" ]
-then
-    echo "Joining secondary to cluster on primary"
-    sudo ha-cluster-join -c "$ip1" -i eth0 -y
-fi
-
-# change cluster password
-echo "Changing hacluster password"
-echo "hacluster:$password" | sudo chpasswd
-
-#configure corosync, only on primary.  Secondary will get config via replication
-if [ "$nodeindex" = "0" ]
-then
-    echo "Configuring corosync config"
-    cat << EOF | sudo tee -a /etc/corosync/corosync.conf
-nodelist {
-    node {
-        ring0_addr: ${ip1}
-    }
-    node {
-        ring0_addr: ${ip2}
-    }
-}
-EOF
-fi
-
-#restart corosync
-echo "Restarted corosync service"
-sudo service corosync restart
+initializeCorosync
 
 # install HANA HA packages
 echo "Installing HANA HA packages"

@@ -3,17 +3,7 @@
 # Built with information from 
 # in https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse
 
-echo "Getting arguments"
-ip1="$1"
-ip2="$2"
-host1="$3"
-host2="$4"
-nodeindex="$5"
-password="$6"
-lbip="$7"
-
-#subscription=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2017-08-01&format=text"`
-#resourcegroup=`curl -H Metadata:true "http://169.254.169.254/metadata/instance/compute/resourceGroupName?api-version=2017-08-01&format=text"`
+source `dirname $0`/common.sh
 
 echo "ip1=$ip1, host1=$host1, ip2=$ip2, host2=$host2, nodeindex=$nodeindex, password=REDACTED, lbip=$lbip"
 
@@ -36,14 +26,24 @@ then
     # Make file systems
     echo "Do mkfs on drbd device"
     sudo mkfs.xfs /dev/drbd0
-    
-    # Now configure cluster framework
-    echo "Configure cluster framework"
-    sudo crm configure << EOF
-rsc_defaults resource-stickiness="1"
-commit
-exit
-EOF
+    sudo mkdir /srv/nfs/NWS
+    sudo chattr +i /srv/nfs/NWS
+    sudo mount -t xfs /dev/drbd0 /srv/nfs/NWS
+    sudo mkdir /srv/nfs/NWS/sidsys
+    sudo mkdir /srv/nfs/NWS/sapmntsid
+    sudo mkdir /srv/nfs/NWS/trans
+    sudo mkdir /srv/nfs/NWS/ASCS
+    sudo mkdir /srv/nfs/NWS/ASCSERS
+    sudo mkdir /srv/nfs/NWS/SCS
+    sudo mkdir /srv/nfs/NWS/SCSERS
+    sudo umount /srv/nfs/NWS
+
+    echo "Sleep for 1m to let device come up"
+    sleep 1m
+
+    configureClusterDefaults
+
+    sudo crm configure property maintenance-mode=true
 
     echo "Configure cluster drbd resource"
     sudo crm configure << EOF
@@ -61,15 +61,15 @@ commit
 exit
 EOF
 
-    echo "Configure cluster nfs resource"
-    sudo crm configure << EOF
-primitive nfsserver \
-  systemd:nfs-server \
-  op monitor interval="30s"
-clone cl-nfsserver nfsserver interleave="true"
-commit
-exit
-EOF
+#    echo "Configure cluster nfs resource"
+#    sudo crm configure << EOF
+#primitive nfsserver \
+#  systemd:nfs-server \
+#  op monitor interval="30s"
+#clone cl-nfsserver nfsserver interleave="true"
+#commit
+#exit
+#EOF
 
     echo "Configure cluster sap mount"
     sudo crm configure << EOF
@@ -79,40 +79,51 @@ primitive fs_NWS_sapmnt \
   directory=/srv/nfs/NWS  \
   fstype=xfs \
   op monitor interval="10s"
-group g-NWS_nfs fs_NWS_sapmnt
-order o-NWS_drbd_before_nfs inf: \
-  ms-drbd_NWS_nfs:promote g-NWS_nfs:start
-colocation col-NWS_nfs_on_drbd inf: \
-  g-NWS_nfs ms-drbd_NWS_nfs:Master
 commit
 exit    
 EOF
     
-    echo "Sleep for 1m to let device come up"
-    sleep 1m
+    echo "configure cluster exportfs"
+    sudo crm configure primitive exportfs_NWS \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS" \
+      options="rw,no_root_squash" clientspec="*" fsid=1 wait_for_leasetime_on_stop=true op monitor interval="30s"
 
-    echo "Make directories"
-    sudo mkdir /srv/nfs/NWS/sidsys
-    sudo mkdir /srv/nfs/NWS/sapmntsid
-    sudo mkdir /srv/nfs/NWS/trans
-    sudo mkdir /srv/nfs/NWS/ASCS
-    sudo mkdir /srv/nfs/NWS/ASCSERS
-    sudo mkdir /srv/nfs/NWS/SCS
-    sudo mkdir /srv/nfs/NWS/SCSERS
-    
-    echo "configure cluster heartbeat"
-    sudo crm configure << EOF
-primitive exportfs_NWS \
- ocf:heartbeat:exportfs \
- params directory="/srv/nfs/NWS" \
- options="rw,no_root_squash" \
- clientspec="*" fsid=0 \
- wait_for_leasetime_on_stop=true \
- op monitor interval="30s"
-modgroup g-NWS_nfs add exportfs_NWS
-commit
-exit
-EOF
+    sudo crm configure primitive exportfs_NWS_sidsys \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/sidsys" \
+      options="rw,no_root_squash" clientspec="*" fsid=2 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_sapmntsid \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/sapmntsid" \
+      options="rw,no_root_squash" clientspec="*" fsid=3 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_trans \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/trans" \
+      options="rw,no_root_squash" clientspec="*" fsid=4 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_ASCS \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/ASCS" \
+      options="rw,no_root_squash" clientspec="*" fsid=5 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_ASCSERS \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/ASCSERS" \
+      options="rw,no_root_squash" clientspec="*" fsid=6 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_SCS \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/SCS" \
+      options="rw,no_root_squash" clientspec="*" fsid=7 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
+    sudo crm configure primitive exportfs_NWS_SCSERS \
+      ocf:heartbeat:exportfs \
+      params directory="/srv/nfs/NWS/SCSERS" \
+      options="rw,no_root_squash" clientspec="*" fsid=8 wait_for_leasetime_on_stop=true op monitor interval="30s"
+
 
     echo "Configure cluster vip"
     sudo crm configure << EOF
@@ -124,27 +135,23 @@ primitive nc_NWS_nfs anything \
   params binfile="/usr/bin/nc" cmdline_options="-l -k 61000" \
   op monitor timeout=20s interval=10 depth=0
 
-modgroup g-NWS_nfs add nc_NWS_nfs
-modgroup g-NWS_nfs add vip_NWS_nfs
-
 commit
 exit
 EOF
 
-#Need to config stonith device
-#    echo "Configure stonith device"
-#    sudo crm configure << EOF
-#primitive rsc_st_azure_1 stonith:fence_azure_arm \
-#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
+  sudo crm configure group g-NWS_nfs \
+    fs_NWS_sapmnt exportfs_NWS exportfs_NWS_sidsys \
+    exportfs_NWS_sapmntsid exportfs_NWS_trans exportfs_NWS_ASCS \
+    exportfs_NWS_ASCSERS exportfs_NWS_SCS exportfs_NWS_SCSERS \
+    nc_NWS_nfs vip_NWS_nfs
 
-#primitive rsc_st_azure_2 stonith:fence_azure_arm \
-#   params subscriptionId="subscription ID" resourceGroup="resource group" tenantId="${aadtenantid}" login="${aadappid}" passwd="${aadsecret}"
+  sudo crm configure order o-NWS_drbd_before_nfs inf: \
+    ms-drbd_NWS_nfs:promote g-NWS_nfs:start
 
-#colocation col_st_azure -2000: rsc_st_azure_1:Started rsc_st_azure_2:Started
+  sudo crm configure colocation col-NWS_nfs_on_drbd inf: \
+    g-NWS_nfs ms-drbd_NWS_nfs:Master
 
-#commit
-#exit
-#EOF
+  sudo crm configure property maintenance-mode=false
 
   echo "Done!"
 fi
