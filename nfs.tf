@@ -92,13 +92,14 @@ resource azurerm_lb_rule "nfs_lb_rule" {
   frontend_ip_configuration_name = "nfs_lb_ip_config"
   probe_id                       = "${azurerm_lb_probe.nfs_lb_probe.id}"
   enable_floating_ip             = "true"
+  idle_timeout_in_minutes        = "30"
 }
 
 resource azurerm_lb_probe "nfs_lb_probe" {
   name                = "nfs_lb_probe"
   resource_group_name = "${azurerm_resource_group.nfs.name}"
   loadbalancer_id     = "${azurerm_lb.nfs_lb.id}"
-  port                = "2049"
+  port                = "61000"
   protocol            = "Tcp"
 }
 

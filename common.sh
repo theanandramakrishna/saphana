@@ -42,7 +42,7 @@ function setupFenceDevice () {
 username=${storageacctname}
 password=${storageacctkey}
 EOF
-    sudo chmod 0600 /root/.smbcreds
+    sudo chmod 0600 /etc/smb.creds
     cat << EOF | sudo tee -a /etc/fstab
 //${storageacctname}.file.core.windows.net/${sharename} /mnt/${sharename} cifs nofail,hard,vers=2.1,credentials=/etc/smb.creds,dir_mode=0777,cache=none,file_mode=0777,serverino
 EOF
@@ -71,6 +71,9 @@ Type=oneshot
 ExecStart=/usr/lib/systemd/scripts/createfenceloop.sh
 TimeoutSec=60
 RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
     cat << EOF | sudo tee /usr/lib/systemd/scripts/createfenceloop.sh
