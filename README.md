@@ -4,7 +4,6 @@ Project initializes via terraform
 
 ------------------
 TODO
-* Configure cifs file as loopback device and use with sbd
 * investigate hardware watchdogs
 * ASCS
 * App Servers
