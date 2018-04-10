@@ -340,6 +340,47 @@ resource azurerm_virtual_machine "bastion_vm" {
   }
 }
 
+resource null_resource "tests" {
+  depends_on = ["configure-hana-cluster-1"]
+
+  connection {
+    type        = "ssh"
+    user        = "${local.bastion_user_name}"
+    private_key = "${file("~/.ssh/azureid_rsa")}"
+    host        = "${local.bastion_fqdn}"
+  }
+
+  // Provision keys such that each vm can ssh to each other
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /tmp/tests",
+    ]
+  }
+
+  provisioner "file" {
+    source      = "shunit2"
+    destination = "/tmp/tests/shunit2"
+  }
+
+  provisioner "file" {
+    source      = "common-test.sh"
+    destination = "/tmp/tests/common-test.sh"
+  }
+
+  provisioner "file" {
+    source      = "nfs-test.sh"
+    destination = "/tmp/tests/nfs-test.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/tests/*.sh",
+      "/tmp/tests/common-test.sh",
+      "/tmp/tests/nfs-test.sh",
+    ]
+  }
+}
+
 resource azurerm_availability_set "saphana_as" {
   name                        = "saphana_as"
   location                    = "${azurerm_resource_group.saphana.location}"

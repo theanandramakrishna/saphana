@@ -1,58 +1,89 @@
 #!/bin/bash
 # test cases for all the functionality in common.sh
 
+node1="$1"
+node2="$2"
+username="$3"
+
+# $1 is the node to ssh into, $2 is the command to execute on the node
+invokeSsh() {
+    ssh $username@$1 '$2'
+}
+
 # test whether ssh keys exist for root
 testRootSsh() {
-    test -f /root/.ssh/id_rsa
-    assertEquals "No private key found" $? 0
+    for n in "$node1 $node2"
+    do
+        invokeSsh $n "test -f /root/.ssh/id_rsa"
+        assertEquals "No private key found on $n" $? SHUNIT_TRUE
 
-    test -f /root/.ssh/id_rsa.pub
-    assertEquals "No public key found" $? 0
+        invokeSsh $n "test -f /root/.ssh/id_rsa.pub"
+        assertEquals "No public key found on $n" $? SHUNIT_TRUE
 
-    x=`stat --print "%a" /root/.ssh/id_rsa`
-    assertEquals "Private key is not locked to root" "$x" 600
+        x=`invokeSsh $n 'stat --print "%a" /root/.ssh/id_rsa'`
+        assertEquals "Private key is not locked to root on $n" "$x" 600
+    done
 }
 
+#$1 is service name
+#$2 is node
 isServiceEnabled() {
-    x=`sudo systemctl status $1 | grep -o "enabled;"`
-    assertEquals "$1 service not enabled" "$x" "enabled;"
+    x=`invokeSsh $2 "sudo systemctl status $1 | grep -o 'enabled;'"`
+    assertEquals "$1 service not enabled not $2" "$x" "enabled;"
 }
 
+#$1 is service name
+#$2 is node
 isServiceActive() {
-    x=`sudo systemctl status $1 | grep -o "Active: active"`
-    assertEquals "$1 service not active" "$x" "Active: active"
+    x=`invokeSsh $2 "sudo systemctl status $1 | grep -o 'Active: active'"`
+    assertEquals "$1 service not active on $1" "$x" "Active: active"
 }
 
 # test whether the fence device
 testFenceDevice() {
-    test -b /dev/loop0
-    assertEquals "Loop0 device not found" $? 0
+    for n in "$node1 $node2"
+    do
+        invokeSsh $n "test -b /dev/loop0"
+        assertEquals "Loop0 device not found on $n" $? SHUNIT_TRUE
 
-    isServiceEnabled "loopfence"
-    isServiceActive "loopfence"
+        isServiceEnabled "loopfence" $n
+        isServiceActive "loopfence" $n
+    done
 }
 
 testWatchdog() {
-    test -c /dev/watchdog
-    assertEquals "watchdog not found" $? 0
+    for n in "$node1 $node2"
+    do
+        invokeSsh $n "test -c /dev/watchdog"
+        assertEquals "watchdog not found on $n" $? SHUNIT_TRUE
 
-    x=`sudo sysctl kernel.panic`
-    assertEquals "kernel panic not set" "$x" "kernel.panic = 60"
+        x=`invokeSsh $n "sudo sysctl kernel.panic"`
+        assertEquals "kernel panic not set on $n" "$x" "kernel.panic = 60"
+    done
 }
 
 testNtp() {
-    isServiceEnabled "ntpd"
-    isServiceActive "ntpd"
+    for n in "$node1 $node2"
+    do
+        isServiceEnabled "ntpd" $n
+        isServiceActive "ntpd" $n
+    done
 }
 
 testClusterStatus() {
-    x=`sudo crm status simple | grep -o "CLUSTER OK: 2 nodes online"`
-    assertEquals "Cluster not OK" "$x" "CLUSTER OK: 2 nodes online" 
+    for n in "$node1 $node2"
+    do
+        x=`invokeSsh $n "sudo crm status simple | grep -o 'CLUSTER OK: 2 nodes online'"`
+        assertEquals "Cluster not OK on $n" "$x" "CLUSTER OK: 2 nodes online" 
+    done
 }
 
 testSbdStatus() {
-    isServiceEnabled "sbd"
-    isServiceActive "sbd"
+    for n in "$node1 $node2"
+    do
+        isServiceEnabled "sbd" $n
+        isServiceActive "sbd" $n
+    done
 }
 
 testSbdSendMessage() {
@@ -70,5 +101,7 @@ testNetworkDown() {
 testSbdFailure() {
 
 }
+
+
 
 . ./shunit2
