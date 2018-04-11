@@ -23,6 +23,10 @@ variable "vmsizelist" {
   default     = ["M64s", "M64ms", "M128s", "M128ms", "E16_v3", "E32_v3", "E64_v3"]
 }
 
+variable "testmode" {
+  default = "1"
+}
+
 // The below is a hack for doing validations.  The count attribute does not exist on
 // the null_resource, so assigning a non-zero value to it fails.
 // The non-zero value is only assigned if the vmsize var is not in the vmsizelist
@@ -298,6 +302,10 @@ locals {
   ]
 }
 
+resource tls_private_key "bastion_key_pair" {
+  algorithm = "RSA"
+}
+
 resource azurerm_virtual_machine "bastion_vm" {
   name                          = "bastion"
   location                      = "${azurerm_resource_group.saphana.location}"
@@ -341,7 +349,7 @@ resource azurerm_virtual_machine "bastion_vm" {
 }
 
 resource null_resource "tests" {
-  depends_on = ["configure-hana-cluster-1"]
+  depends_on = ["null_resource.configure-hana-cluster-1"]
 
   connection {
     type        = "ssh"
@@ -355,6 +363,11 @@ resource null_resource "tests" {
     inline = [
       "mkdir -p /tmp/tests",
     ]
+  }
+
+  provisioner "file" {
+    content     = "${tls_private_key.sapvm_key.private_key_pem}"
+    destination = "/home/${local.bastion_user_name}/.ssh/id_rsa"
   }
 
   provisioner "file" {
@@ -374,6 +387,7 @@ resource null_resource "tests" {
 
   provisioner "remote-exec" {
     inline = [
+      "sudo chmod 0400 /home/${local.bastion_user_name}/.ssh/id_rsa",
       "chmod +x /tmp/tests/*.sh",
       "/tmp/tests/common-test.sh",
       "/tmp/tests/nfs-test.sh",

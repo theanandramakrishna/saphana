@@ -317,3 +317,33 @@ resource null_resource "configure-nfs-cluster-phase2" {
     ]
   }
 }
+
+module "nfs_addtestuser-0" {
+  source     = "./adduser"
+  depends_on = ["configure-nfs-cluster-phase2"]
+
+  enabled    = "${var.testmode}"
+  username   = "unittest"
+  public_key = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+
+  conn_username     = "${local.nfs_admin_user_name}"
+  conn_host         = "${element(local.computer_name, 0)}"
+  conn_private_key  = "${file("~/.ssh/azureid_rsa")}"
+  conn_bastion_host = "${local.bastion_fqdn}"
+  conn_bastion_user = "${local.bastion_user_name}"
+}
+
+module "nfs_addtestuser-1" {
+  source     = "./adduser"
+  depends_on = ["configure-nfs-cluster-phase2"]
+
+  enabled    = "${var.testmode}"
+  username   = "unittest"
+  public_key = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+
+  conn_username     = "${local.nfs_admin_user_name}"
+  conn_host         = "${element(local.computer_name, 1)}"
+  conn_private_key  = "${file("~/.ssh/azureid_rsa")}"
+  conn_bastion_host = "${local.bastion_fqdn}"
+  conn_bastion_user = "${local.bastion_user_name}"
+}
