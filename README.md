@@ -4,8 +4,13 @@ Project initializes via terraform
 
 ------------------
 TODO
-* investigate hardware watchdogs
 * ASCS
 * App Servers
 * Testing.  See https://www.suse.com/documentation/sle-ha-12/singlehtml/install-quick/install-quick.html#sec.ha.inst.quick.test
 * Name suffix randomization
+------------------
+To run tests after deployment do:
+'''
+cd /tmp
+./common-test.sh
+'''
