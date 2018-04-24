@@ -61,7 +61,6 @@ EOF
 Description=Setup loop device for fencing
 DefaultDependencies=false
 ConditionFileIsExecutable=/usr/lib/systemd/scripts/createfenceloop.sh
-Before=local-fs.target
 After=systemd-udev-settle.service mnt-${sharename}.mount
 Requires=systemd-udev-settle.service
 
@@ -99,7 +98,10 @@ function enableWatchdog () {
 function enableNtp () {
     # Turn on ntp at boot
     echo "Turn on ntp at boot"
-    sudo systemctl enable ntpd.service    
+    sudo systemctl enable ntpd.service   
+
+    echo "Start ntp if not already"
+    sudo systemctl start ntpd.service 
 }
 
 function installPackages () {
