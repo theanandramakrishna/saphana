@@ -101,21 +101,22 @@ testSendSbdTestMessage_2_1() {
 
 extractRebootTime() {
     x=`invokeSsh $1 "who -b | grep -oP 'system boot\K(.*)'"`
-    y=`date --date "$x" +%s`
-    echo $y
+    date --date "$x" +%s
 }
 
 sendSbdResetMessage() {
     sender=$1
     receiver=$2
     boottime1=`extractRebootTime $receiver`
+    echo "Boottime1:$boottime1"
     x=`invokeSsh $sender "sudo sbd -d /dev/loop0 message $receiver reset"`
-    echo "Sleeping 90s for VM to come back up"
-    sleep 90s
+    echo "Sleeping 60s for VM to come back up"
+    sleep 60s
 
     boottime2=`extractRebootTime $receiver`
+    echo "Boottime2:$boottime2"
     assertNotNull "did not extract reboot time" "$boottime2"
-    assertNotEquals "Node $receiver did not reset" $boottime1 $boottime2
+    assertNotEquals "Node $receiver did not reset" "$boottime1" "$boottime2"
 }
 
 testSendSbdReset_1_2() {
@@ -128,33 +129,44 @@ testSendSbdReset_2_1() {
 
 testCrmFence_1() {
     boottime1=`extractRebootTime $node1`
+    echo "Boottime1:$boottime1"
+    assertNotNull "did not extract reboot time" "$boottime1"
     fenceNode $node2 $node1
     boottime2=`extractRebootTime $node1`
-    assertNotEquals "Node $node1 did not reset" $boottime1 $boottime2
+    echo "Boottime2:$boottime2"
+    assertNotNull "did not extract reboot time" "$boottime2"
+    assertNotEquals "Node $node1 did not reset" "$boottime1" "$boottime2"
 }
 
 testCrmFence_2() {
     boottime1=`extractRebootTime $node2`
+    echo "Boottime1:$boottime1"
+    assertNotNull "did not extract reboot time" "$boottime1"
     fenceNode $node1 $node2
     boottime2=`extractRebootTime $node2`
-    assertNotEquals "Node $node2 did not reset" $boottime1 $boottime2
+    echo "Boottime2:$boottime2"
+    assertNotNull "did not extract reboot time" "$boottime2"
+    assertNotEquals "Node $node2 did not reset" "$boottime1" "$boottime2"
 }
 
-testNodeFailure() {
-    boottime1=`extractRebootTime $node2`
-    invokeSsh $node2 "sudo echo c > /proc/sysrq-trigger"
-    x=`invokeSsh $node1 "sudo crm node status | grep Stopped"`
+#
+#testNodeFailure() {
+#    boottime1=`extractRebootTime $node2`
+#    assertNotNull "did not extract reboot time" "$boottime1"
+#    invokeSsh $node2 "echo c | sudo tee /proc/sysrq-trigger"
+#    x=`invokeSsh $node1 "sudo crm node status | grep Stopped"`
     #Assert that all resources are still up despite 1 node crashing
-    assertNull "Some resources are stopped" "$x"
-    validateResourceStatus $node1 "fencing-sbd" $node1
-    validateResourceStatus $node1 "stonith-sbd" $node1
+#    assertNull "Some resources are stopped" "$x"
+#    validateResourceStatus $node1 "fencing-sbd" $node1
+#    validateResourceStatus $node1 "stonith-sbd" $node1
 
     #Assert that node2 should automatically restart since restart on panic is configured
-    echo "Sleeping 90s for VM to come back up"
-    sleep 90s
-    boottime2=`extractRebootTime $node2`
-    assertNotEquals "Node $node2 did not reboot" $boottime1 $boottime2
-}
+#    echo "Sleeping 60s for VM to come back up"
+#    sleep 60s
+#    boottime2=`extractRebootTime $node2`
+#    assertNotNull "did not extract reboot time" "$boottime2"
+#    assertNotEquals "Node $node2 did not reboot" $boottime1 $boottime2
+#}
 
 #
 #testNetworkDown() {

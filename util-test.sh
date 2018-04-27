@@ -24,7 +24,7 @@ validateResourceStatus() {
 # $1 is the node to fence from
 # $2 is the node to fence
 fenceNode() {
-    invokeSsh $1 "sudo crm node fence $2"
-    echo "Sleeping 90s for VM to come back up"
-    sleep 90s
+    invokeSsh $1 "sudo crm -F node fence $2"
+    echo "Sleeping 60s for VM to come back up"
+    sleep 60s
 }
