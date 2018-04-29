@@ -17,7 +17,7 @@ extractResourceStatus() {
 # $3 is the expected node that the resource is running on
 validateResourceStatus() {
     x=`extractResourceStatus $1 $2`
-    y=`echo "$x" | grep -oP "resource $2 is running on: \K(.*)"`
+    y=`echo "$x" | grep -oP "resource $2 is running on: \K(\S*)"`
     assertEquals "$2 is not running on $3" "$3" "$y"
 }
 
