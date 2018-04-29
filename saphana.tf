@@ -348,8 +348,38 @@ resource azurerm_virtual_machine "bastion_vm" {
   }
 }
 
+data template_file "common_test" {
+  template = "${file("${path.module}/common-test.sh")}"
+
+  vars {
+    unittestuser                    = "unittestuser"
+    unittestuser_public_key_openssh = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+    nfsvm0_name                     = "${element(local.computer_name, 0)}"
+    nfsvm1_name                     = "${element(local.computer_name, 1)}"
+    nfs_lb_ip                       = "${azurerm_lb.nfs_lb.private_ip_address}"
+  }
+}
+
+data template_file "nfs_test" {
+  template = "${file("${path.module}/nfs-test.sh")}"
+
+  vars {
+    unittestuser                    = "unittestuser"
+    unittestuser_public_key_openssh = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+    nfsvm0_name                     = "${element(local.computer_name, 0)}"
+    nfsvm1_name                     = "${element(local.computer_name, 1)}"
+    nfs_lb_ip                       = "${azurerm_lb.nfs_lb.private_ip_address}"
+  }
+}
+
+resource tls_private_key "sapvm_key" {
+  algorithm = "RSA"
+}
+
 resource null_resource "tests" {
-  depends_on = ["null_resource.configure-hana-cluster-1"]
+  depends_on = [
+    "null_resource.configure-nfs-cluster-phase2", //"null_resource.configure-hana-cluster-1",
+  ]
 
   connection {
     type        = "ssh"
@@ -367,7 +397,7 @@ resource null_resource "tests" {
 
   provisioner "file" {
     content     = "${tls_private_key.sapvm_key.private_key_pem}"
-    destination = "/home/${local.bastion_user_name}/.ssh/id_rsa"
+    destination = "/home/tests/id_rsa"
   }
 
   provisioner "file" {
@@ -376,25 +406,33 @@ resource null_resource "tests" {
   }
 
   provisioner "file" {
-    source      = "common-test.sh"
+    content     = "${data.template_file.common_test.rendered}"
     destination = "/tmp/tests/common-test.sh"
   }
 
   provisioner "file" {
-    source      = "nfs-test.sh"
+    source      = "util-test.sh"
+    destination = "/tmp/tests/util-test.sh"
+  }
+
+  provisioner "file" {
+    content     = "${data.template_file.nfs_test.rendered}"
     destination = "/tmp/tests/nfs-test.sh"
   }
 
   provisioner "remote-exec" {
     inline = [
+      "sudo cp /tmp/tests/id_rsa /home/${local.bastion_user_name}/.ssh",
       "sudo chmod 0400 /home/${local.bastion_user_name}/.ssh/id_rsa",
       "chmod +x /tmp/tests/*.sh",
+      "cd /tmp/tests",
       "/tmp/tests/common-test.sh",
       "/tmp/tests/nfs-test.sh",
     ]
   }
 }
 
+/*
 resource azurerm_availability_set "saphana_as" {
   name                        = "saphana_as"
   location                    = "${azurerm_resource_group.saphana.location}"
@@ -479,10 +517,6 @@ resource azurerm_virtual_machine "saphana_vm" {
     enabled     = true
     storage_uri = "${azurerm_storage_account.sap_diagnostics.primary_blob_endpoint}"
   }
-}
-
-resource tls_private_key "sapvm_key" {
-  algorithm = "RSA"
 }
 
 resource null_resource "configure-hana" {
@@ -573,3 +607,5 @@ resource null_resource "configure-hana-cluster-1" {
     ]
   }
 }
+*/
+

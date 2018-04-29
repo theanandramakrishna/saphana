@@ -1,9 +1,9 @@
 #!/bin/bash
 # test cases for all the functionality in common.sh
 
-node1="nfsvm0"
-node2="nfsvm1"
-username="testacc"
+node1="${nfsvm0_name}"
+node2="${nfsvm1_name}"
+username="${unittestuser}"
 
 source "util-test.sh"
 

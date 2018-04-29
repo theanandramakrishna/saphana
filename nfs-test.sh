@@ -1,9 +1,9 @@
 #!/bin/bash
 
-node1="nfsvm0"
-node2="nfsvm1"
-nfsip="10.0.1.4"
-username="testacc"
+node1="${nfsvm0_name}"
+node2="${nfsvm1_name}"
+nfsip="${nfs_lb_ip}"
+username="${unittestuser}"
 
 source "util-test.sh"
 

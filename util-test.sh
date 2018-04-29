@@ -3,7 +3,7 @@
 # $1 is the node to ssh into
 # $2 is the command to execute on the node
 invokeSsh() {
-    ssh $username@$1 "$2"
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $username@$1 "$2"
 }
 
 # $1 is the node to ssh into
