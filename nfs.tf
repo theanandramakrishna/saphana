@@ -50,10 +50,12 @@ locals {
 //
 
 resource azurerm_network_interface "nfs_nic" {
-  count               = 2
-  name                = "nfs_nic_${count.index}"
-  resource_group_name = "${azurerm_resource_group.nfs.name}"
-  location            = "${azurerm_resource_group.nfs.location}"
+  count                         = 2
+  name                          = "nfs_nic_${count.index}"
+  resource_group_name           = "${azurerm_resource_group.nfs.name}"
+  location                      = "${azurerm_resource_group.nfs.location}"
+  enable_accelerated_networking = true
+  internal_dns_name_label       = "nfsvm${count.index}"
 
   ip_configuration {
     name                                    = "nfs_nic_ipconfig"
@@ -276,7 +278,7 @@ resource null_resource "configure-nfs-cluster-0" {
     inline = [
       "chmod +x /tmp/common.sh",
       "source /tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
-      "sudo source /tmp/addunittestuser.sh",
+      "source /tmp/addunittestuser.sh",
     ]
   }
 }
@@ -298,7 +300,7 @@ resource null_resource "configure-nfs-cluster-1" {
     inline = [
       "chmod +x /tmp/common.sh",
       "source /tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 1 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
-      "sudo source /tmp/addunittestuser.sh",
+      "source /tmp/addunittestuser.sh",
     ]
   }
 }

@@ -7,3 +7,4 @@ sudo mkdir /home/${unittestuser}/.ssh
 sudo chmod 0700 /home/${unittestuser}/.ssh
 echo "${unittestuser_public_key_openssh}" | sudo tee -a /home/${unittestuser}/.ssh/authorized_keys
 sudo chmod 0644 /home/${unittestuser}/.ssh/authorized_keys
+sudo chown -R ${unittestuser} /home/${unittestuser}/.ssh

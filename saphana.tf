@@ -192,10 +192,11 @@ resource azurerm_network_interface "bastion_nic" {
 }
 
 resource azurerm_network_interface "saphana_nic" {
-  name                = "saphana_nic_${count.index}"
-  count               = 2
-  resource_group_name = "${azurerm_resource_group.saphana.name}"
-  location            = "${azurerm_resource_group.saphana.location}"
+  name                          = "saphana_nic_${count.index}"
+  count                         = 2
+  resource_group_name           = "${azurerm_resource_group.saphana.name}"
+  location                      = "${azurerm_resource_group.saphana.location}"
+  enable_accelerated_networking = true
 
   ip_configuration {
     name                                    = "saphana_nic_ipconfig"
@@ -396,8 +397,8 @@ resource null_resource "tests" {
   }
 
   provisioner "file" {
-    content     = "${tls_private_key.sapvm_key.private_key_pem}"
-    destination = "/home/tests/id_rsa"
+    content     = "${tls_private_key.bastion_key_pair.private_key_pem}"
+    destination = "/tmp/tests/id_rsa"
   }
 
   provisioner "file" {
@@ -423,11 +424,9 @@ resource null_resource "tests" {
   provisioner "remote-exec" {
     inline = [
       "sudo cp /tmp/tests/id_rsa /home/${local.bastion_user_name}/.ssh",
+      "sudo chown ${local.bastion_user_name} /home/${local.bastion_user_name}/.ssh/id_rsa",
       "sudo chmod 0400 /home/${local.bastion_user_name}/.ssh/id_rsa",
       "chmod +x /tmp/tests/*.sh",
-      "cd /tmp/tests",
-      "/tmp/tests/common-test.sh",
-      "/tmp/tests/nfs-test.sh",
     ]
   }
 }
