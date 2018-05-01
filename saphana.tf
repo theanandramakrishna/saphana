@@ -23,6 +23,10 @@ variable "vmsizelist" {
   default     = ["M64s", "M64ms", "M128s", "M128ms", "E16_v3", "E32_v3", "E64_v3"]
 }
 
+variable "testmode" {
+  default = "1"
+}
+
 // The below is a hack for doing validations.  The count attribute does not exist on
 // the null_resource, so assigning a non-zero value to it fails.
 // The non-zero value is only assigned if the vmsize var is not in the vmsizelist
@@ -188,10 +192,11 @@ resource azurerm_network_interface "bastion_nic" {
 }
 
 resource azurerm_network_interface "saphana_nic" {
-  name                = "saphana_nic_${count.index}"
-  count               = 2
-  resource_group_name = "${azurerm_resource_group.saphana.name}"
-  location            = "${azurerm_resource_group.saphana.location}"
+  name                          = "saphana_nic_${count.index}"
+  count                         = 2
+  resource_group_name           = "${azurerm_resource_group.saphana.name}"
+  location                      = "${azurerm_resource_group.saphana.location}"
+  enable_accelerated_networking = true
 
   ip_configuration {
     name                                    = "saphana_nic_ipconfig"
@@ -298,6 +303,10 @@ locals {
   ]
 }
 
+resource tls_private_key "bastion_key_pair" {
+  algorithm = "RSA"
+}
+
 resource azurerm_virtual_machine "bastion_vm" {
   name                          = "bastion"
   location                      = "${azurerm_resource_group.saphana.location}"
@@ -337,6 +346,88 @@ resource azurerm_virtual_machine "bastion_vm" {
   boot_diagnostics {
     enabled     = true
     storage_uri = "${azurerm_storage_account.sap_diagnostics.primary_blob_endpoint}"
+  }
+}
+
+data template_file "common_test" {
+  template = "${file("${path.module}/common-test.sh")}"
+
+  vars {
+    unittestuser                    = "unittestuser"
+    unittestuser_public_key_openssh = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+    nfsvm0_name                     = "${element(local.computer_name, 0)}"
+    nfsvm1_name                     = "${element(local.computer_name, 1)}"
+    nfs_lb_ip                       = "${azurerm_lb.nfs_lb.private_ip_address}"
+  }
+}
+
+data template_file "nfs_test" {
+  template = "${file("${path.module}/nfs-test.sh")}"
+
+  vars {
+    unittestuser                    = "unittestuser"
+    unittestuser_public_key_openssh = "${tls_private_key.bastion_key_pair.public_key_openssh}"
+    nfsvm0_name                     = "${element(local.computer_name, 0)}"
+    nfsvm1_name                     = "${element(local.computer_name, 1)}"
+    nfs_lb_ip                       = "${azurerm_lb.nfs_lb.private_ip_address}"
+  }
+}
+
+resource tls_private_key "sapvm_key" {
+  algorithm = "RSA"
+}
+
+resource null_resource "tests" {
+  depends_on = [
+    "null_resource.configure-nfs-cluster-phase2", //"null_resource.configure-hana-cluster-1",
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "${local.bastion_user_name}"
+    private_key = "${file("~/.ssh/azureid_rsa")}"
+    host        = "${local.bastion_fqdn}"
+  }
+
+  // Provision keys such that each vm can ssh to each other
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /tmp/tests",
+    ]
+  }
+
+  provisioner "file" {
+    content     = "${tls_private_key.bastion_key_pair.private_key_pem}"
+    destination = "/tmp/tests/id_rsa"
+  }
+
+  provisioner "file" {
+    source      = "shunit2"
+    destination = "/tmp/tests/shunit2"
+  }
+
+  provisioner "file" {
+    content     = "${data.template_file.common_test.rendered}"
+    destination = "/tmp/tests/common-test.sh"
+  }
+
+  provisioner "file" {
+    source      = "util-test.sh"
+    destination = "/tmp/tests/util-test.sh"
+  }
+
+  provisioner "file" {
+    content     = "${data.template_file.nfs_test.rendered}"
+    destination = "/tmp/tests/nfs-test.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo cp /tmp/tests/id_rsa /home/${local.bastion_user_name}/.ssh",
+      "sudo chown ${local.bastion_user_name} /home/${local.bastion_user_name}/.ssh/id_rsa",
+      "sudo chmod 0400 /home/${local.bastion_user_name}/.ssh/id_rsa",
+      "chmod +x /tmp/tests/*.sh",
+    ]
   }
 }
 
@@ -424,10 +515,6 @@ resource azurerm_virtual_machine "saphana_vm" {
     enabled     = true
     storage_uri = "${azurerm_storage_account.sap_diagnostics.primary_blob_endpoint}"
   }
-}
-
-resource tls_private_key "sapvm_key" {
-  algorithm = "RSA"
 }
 
 resource null_resource "configure-hana" {

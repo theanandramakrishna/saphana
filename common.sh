@@ -21,7 +21,6 @@ function initialize () {
     enableWatchdog
     enableNtp
     installPackages
-#BUGBUG Configure kernel reboot on panic    
 }
 
 # Copy over ssh keys for root account
@@ -62,7 +61,6 @@ EOF
 Description=Setup loop device for fencing
 DefaultDependencies=false
 ConditionFileIsExecutable=/usr/lib/systemd/scripts/createfenceloop.sh
-Before=local-fs.target
 After=systemd-udev-settle.service mnt-${sharename}.mount
 Requires=systemd-udev-settle.service
 
@@ -91,12 +89,19 @@ function enableWatchdog () {
     echo "Enabling softdog"
     echo softdog | sudo tee /etc/modules-load.d/watchdog.conf
     sudo systemctl restart systemd-modules-load    
+
+    # Turn on reboot on panic, both for now and persistent across reboots
+    sudo sysctl -w kernel.panic=60
+    echo "kernel.panic=60" | sudo tee -a /etc/sysctl.conf    
 }
 
 function enableNtp () {
     # Turn on ntp at boot
     echo "Turn on ntp at boot"
-    sudo systemctl enable ntpd.service    
+    sudo systemctl enable ntpd.service   
+
+    echo "Start ntp if not already"
+    sudo systemctl start ntpd.service 
 }
 
 function installPackages () {

@@ -50,10 +50,12 @@ locals {
 //
 
 resource azurerm_network_interface "nfs_nic" {
-  count               = 2
-  name                = "nfs_nic_${count.index}"
-  resource_group_name = "${azurerm_resource_group.nfs.name}"
-  location            = "${azurerm_resource_group.nfs.location}"
+  count                         = 2
+  name                          = "nfs_nic_${count.index}"
+  resource_group_name           = "${azurerm_resource_group.nfs.name}"
+  location                      = "${azurerm_resource_group.nfs.location}"
+  enable_accelerated_networking = true
+  internal_dns_name_label       = "nfsvm${count.index}"
 
   ip_configuration {
     name                                    = "nfs_nic_ipconfig"
@@ -155,7 +157,7 @@ resource azurerm_virtual_machine "nfs_vm" {
   resource_group_name           = "${azurerm_resource_group.nfs.name}"
   network_interface_ids         = ["${element(azurerm_network_interface.nfs_nic.*.id, count.index)}"]
   delete_os_disk_on_termination = true
-  vm_size                       = "${local.vmsize}"
+  vm_size                       = "Standard_D4_v2"
   availability_set_id           = "${azurerm_availability_set.nfs_as.id}"
 
   delete_data_disks_on_termination = true
@@ -204,7 +206,7 @@ resource azurerm_virtual_machine "nfs_vm" {
 
 resource null_resource "configure-nfs" {
   count      = 2
-  depends_on = ["azurerm_virtual_machine.nfs_vm"]
+  depends_on = ["azurerm_virtual_machine.nfs_vm", "azurerm_virtual_machine.bastion_vm"]
 
   connection {
     type        = "ssh"
@@ -252,6 +254,11 @@ resource null_resource "configure-nfs" {
     source      = "common.sh"
     destination = "/tmp/common.sh"
   }
+
+  provisioner "file" {
+    content     = "${data.template_file.add_unittest_user.rendered}"
+    destination = "/tmp/addunittestuser.sh"
+  }
 }
 
 resource null_resource "configure-nfs-cluster-0" {
@@ -270,8 +277,8 @@ resource null_resource "configure-nfs-cluster-0" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/common.sh",
-      "chmod +x /tmp/config_nfs_phase1.sh",
-      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "source /tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "source /tmp/addunittestuser.sh",
     ]
   }
 }
@@ -291,8 +298,9 @@ resource null_resource "configure-nfs-cluster-1" {
 
   provisioner "remote-exec" {
     inline = [
-      "chmod +x /tmp/config_nfs_phase1.sh",
-      "/tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 1 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "chmod +x /tmp/common.sh",
+      "source /tmp/config_nfs_phase1.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 1 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
+      "source /tmp/addunittestuser.sh",
     ]
   }
 }
@@ -315,5 +323,14 @@ resource null_resource "configure-nfs-cluster-phase2" {
       "chmod +x /tmp/config_nfs_phase2.sh",
       "/tmp/config_nfs_phase2.sh ${join(" ", azurerm_network_interface.nfs_nic.*.private_ip_address)} ${join(" ", local.computer_name)} 0 \"${random_string.nfsvm_password.result}\" ${azurerm_lb.nfs_lb.private_ip_address} ${azurerm_storage_account.nfs_storage_sbd.name} \"${azurerm_storage_account.nfs_storage_sbd.primary_access_key}\" ${azurerm_storage_share.nfs_share_sbd.name}",
     ]
+  }
+}
+
+data template_file "add_unittest_user" {
+  template = "${file("${path.module}/addunittestuser.sh")}"
+
+  vars {
+    unittestuser                    = "unittestuser"
+    unittestuser_public_key_openssh = "${tls_private_key.bastion_key_pair.public_key_openssh}"
   }
 }
