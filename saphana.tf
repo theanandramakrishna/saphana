@@ -431,7 +431,6 @@ resource null_resource "tests" {
   }
 }
 
-/*
 resource azurerm_availability_set "saphana_as" {
   name                        = "saphana_as"
   location                    = "${azurerm_resource_group.saphana.location}"
@@ -606,5 +605,3 @@ resource null_resource "configure-hana-cluster-1" {
     ]
   }
 }
-*/
-
