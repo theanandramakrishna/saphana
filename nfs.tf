@@ -12,15 +12,6 @@ variable "byos" {
 // Resource group globals
 //
 
-resource azurerm_resource_group "nfs" {
-  name     = "nfs"
-  location = "${var.location}"
-
-  tags {
-    workload = "nfs"
-  }
-}
-
 resource random_string "nfsvm_password" {
   length  = 16
   special = true
@@ -52,8 +43,8 @@ locals {
 resource azurerm_network_interface "nfs_nic" {
   count                         = 2
   name                          = "nfs_nic_${count.index}"
-  resource_group_name           = "${azurerm_resource_group.nfs.name}"
-  location                      = "${azurerm_resource_group.nfs.location}"
+  resource_group_name           = "${azurerm_resource_group.saphana.name}"
+  location                      = "${azurerm_resource_group.saphana.location}"
   enable_accelerated_networking = true
   internal_dns_name_label       = "nfsvm${count.index}"
 
@@ -67,8 +58,8 @@ resource azurerm_network_interface "nfs_nic" {
 
 resource azurerm_lb "nfs_lb" {
   name                = "nfs_lb"
-  resource_group_name = "${azurerm_resource_group.nfs.name}"
-  location            = "${azurerm_resource_group.nfs.location}"
+  resource_group_name = "${azurerm_resource_group.saphana.name}"
+  location            = "${azurerm_resource_group.saphana.location}"
 
   frontend_ip_configuration {
     name                          = "nfs_lb_ip_config"
@@ -79,13 +70,13 @@ resource azurerm_lb "nfs_lb" {
 
 resource azurerm_lb_backend_address_pool "nfs_lb_backend_address_pool" {
   name                = "nfs_lb_backend_address_pool"
-  resource_group_name = "${azurerm_resource_group.nfs.name}"
+  resource_group_name = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id     = "${azurerm_lb.nfs_lb.id}"
 }
 
 resource azurerm_lb_rule "nfs_lb_rule" {
   name                           = "nfs_lb_rule"
-  resource_group_name            = "${azurerm_resource_group.nfs.name}"
+  resource_group_name            = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id                = "${azurerm_lb.nfs_lb.id}"
   protocol                       = "Tcp"
   frontend_port                  = "2049"                                                              // NFS port
@@ -99,7 +90,7 @@ resource azurerm_lb_rule "nfs_lb_rule" {
 
 resource azurerm_lb_probe "nfs_lb_probe" {
   name                = "nfs_lb_probe"
-  resource_group_name = "${azurerm_resource_group.nfs.name}"
+  resource_group_name = "${azurerm_resource_group.saphana.name}"
   loadbalancer_id     = "${azurerm_lb.nfs_lb.id}"
   port                = "61000"
   protocol            = "Tcp"
@@ -117,23 +108,23 @@ resource random_string "storage_suffix" {
 
 resource azurerm_storage_account "nfs_storage_sbd" {
   name                     = "nfssbd${random_string.storage_suffix.result}"
-  resource_group_name      = "${azurerm_resource_group.nfs.name}"
-  location                 = "${azurerm_resource_group.nfs.location}"
+  resource_group_name      = "${azurerm_resource_group.saphana.name}"
+  location                 = "${azurerm_resource_group.saphana.location}"
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
 
 resource azurerm_storage_share "nfs_share_sbd" {
   name                 = "nfssbd"
-  resource_group_name  = "${azurerm_resource_group.nfs.name}"
+  resource_group_name  = "${azurerm_resource_group.saphana.name}"
   storage_account_name = "${azurerm_storage_account.nfs_storage_sbd.name}"
   quota                = 10
 }
 
 resource azurerm_storage_account "nfs_diagnostics" {
   name                     = "nfsdiag${random_string.storage_suffix.result}"
-  resource_group_name      = "${azurerm_resource_group.nfs.name}"
-  location                 = "${azurerm_resource_group.nfs.location}"
+  resource_group_name      = "${azurerm_resource_group.saphana.name}"
+  location                 = "${azurerm_resource_group.saphana.location}"
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
@@ -144,8 +135,8 @@ resource azurerm_storage_account "nfs_diagnostics" {
 
 resource azurerm_availability_set "nfs_as" {
   name                        = "nfs_as"
-  resource_group_name         = "${azurerm_resource_group.nfs.name}"
-  location                    = "${azurerm_resource_group.nfs.location}"
+  resource_group_name         = "${azurerm_resource_group.saphana.name}"
+  location                    = "${azurerm_resource_group.saphana.location}"
   managed                     = "true"
   platform_fault_domain_count = 2
 }
@@ -153,8 +144,8 @@ resource azurerm_availability_set "nfs_as" {
 resource azurerm_virtual_machine "nfs_vm" {
   count                         = 2
   name                          = "nfs_vm_${count.index}"
-  location                      = "${azurerm_resource_group.nfs.location}"
-  resource_group_name           = "${azurerm_resource_group.nfs.name}"
+  location                      = "${azurerm_resource_group.saphana.location}"
+  resource_group_name           = "${azurerm_resource_group.saphana.name}"
   network_interface_ids         = ["${element(azurerm_network_interface.nfs_nic.*.id, count.index)}"]
   delete_os_disk_on_termination = true
   vm_size                       = "Standard_D4_v2"
@@ -218,13 +209,13 @@ resource null_resource "configure-nfs" {
     bastion_user = "${local.bastion_user_name}"
   }
 
-  // Provision keys such that each vm can ssh to each other
   provisioner "remote-exec" {
     inline = [
       "mkdir -p /tmp/.ssh",
     ]
   }
 
+  // Provision keys such that each vm can ssh to each other
   provisioner "file" {
     content     = "${tls_private_key.nfsvm_key.private_key_pem}"
     destination = "/tmp/.ssh/id_rsa"
